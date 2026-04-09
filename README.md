@@ -24,7 +24,7 @@ UniRide is a student ride-sharing web application designed to help university st
 
 ---
 
-## Getting Started
+## Local Development
 
 Install dependencies:
 
@@ -38,8 +38,11 @@ Run the development server:
 npm run dev
 ```
 
-Open the local development URL shown in your terminal  
-(default is usually `http://localhost:3000` or the next available port).
+Open the application in your browser at:
+
+**http://localhost:3001**
+
+> Note: This project is configured to always run on port 3001. If port 3001 is unavailable, Next.js may select the next available port.
 
 ---
 
