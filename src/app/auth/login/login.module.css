@@ -1,0 +1,111 @@
+.page {
+  min-height: calc(100vh - 70px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: linear-gradient(135deg, #fff1f2, #fff7ed);
+  padding: 20px;
+  position: relative;
+  overflow: hidden;
+}
+
+.page::before,
+.page::after {
+  content: "";
+  position: absolute;
+  width: 300px;
+  height: 300px;
+  border-radius: 50%;
+  z-index: 0;
+}
+
+.page::before {
+  top: -80px;
+  left: -80px;
+  background: #fbcfe8;
+  opacity: 0.3;
+}
+
+.page::after {
+  bottom: -80px;
+  right: -80px;
+  background: #fed7aa;
+  opacity: 0.3;
+}
+
+.container {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 420px;
+  background: white;
+  padding: 32px 28px;
+  border-radius: 20px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+  text-align: center;
+}
+
+.logoWrapper {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 15px;
+}
+
+.title {
+  font-size: 24px;
+  font-weight: 600;
+  margin-bottom: 5px;
+}
+
+.desc {
+  font-size: 14px;
+  color: #6b7280;
+  margin-bottom: 22px;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.form input {
+  padding: 11px 12px;
+  border-radius: 10px;
+  border: 1px solid #f3f4f6;
+  font-size: 14px;
+  outline: none;
+  transition: 0.2s;
+}
+
+.form input:focus {
+  border-color: #f472b6;
+  box-shadow: 0 0 0 2px rgba(244, 114, 182, 0.15);
+}
+
+.button {
+  margin-top: 10px;
+  padding: 11px;
+  border-radius: 10px;
+  border: none;
+  background: linear-gradient(135deg, #f472b6, #fb923c);
+  color: white;
+  font-weight: 500;
+  cursor: pointer;
+  transition: 0.25s;
+}
+
+.button:hover {
+  opacity: 0.9;
+}
+
+.message {
+  margin-top: 16px;
+  font-size: 14px;
+}
+
+.message a {
+  color: #f472b6;
+  font-weight: 500;
+  text-decoration: none;
+}

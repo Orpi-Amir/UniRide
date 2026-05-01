@@ -1,0 +1,35 @@
+.card {
+  border-radius: 12px;
+  padding: 20px;
+  background: #fff;
+  color: #333;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  text-align: left;
+  border: 1px solid #e5e7eb;
+  transition: transform 0.2s ease;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+}
+
+.card p {
+  margin: 5px 0;
+}
+
+/* button */
+.bookButton {
+  background: linear-gradient(135deg, #f472b6, #fb923c);
+  color: #fff;
+  padding: 10px 15px;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  margin-top: 12px;
+  font-weight: 600;
+  transition: 0.3s ease;
+}
+
+.bookButton:hover {
+  opacity: 0.9;
+}
