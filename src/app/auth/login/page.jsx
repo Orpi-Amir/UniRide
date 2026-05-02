@@ -1,87 +1,86 @@
 "use client";
 
-import Navbar from "../../../components/Navbar";
+import Navbar from "@/components/Navbar";
 import styles from "./login.module.css";
 import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSignIn } from "@clerk/nextjs";
+import { isValidUniversityEmail } from "@/lib/universityEmailValidator";
 
-const blockedDomains = [
-  "@gmail.com",
-  "@yahoo.com",
-  "@hotmail.com",
-  "@outlook.com",
-  "@icloud.com",
-];
-
-const isValidUniversityEmail = (email) => {
-  const lower = email.toLowerCase();
-
-  const isBlocked = blockedDomains.some((d) =>
-    lower.endsWith(d)
-  );
-
-  if (isBlocked) return false;
-
-  return (
-    lower.includes(".edu") ||
-    lower.includes(".ac") ||
-    lower.includes(".org.bh") ||
-    lower.includes(".std")
-  );
-};
-
-const Login = () => {
+export default function Login() {
   const router = useRouter();
   const { isLoaded, signIn, setActive } = useSignIn();
 
-  const [formData, setFormData] = useState({
-    email: "",
-    password: "",
-  });
+  const [formData, setFormData] = useState({ email: "", password: "" });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
-    });
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+    setError("");
   };
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    setError("");
 
-    if (!isLoaded) return;
+    // Wait for Clerk initialization
+    if (typeof isLoaded === "undefined" || !isLoaded) {
+      setError("Authentication is still loading. Please wait a moment.");
+      return;
+    }
 
-    // University email validation
+    // Validate university email
     if (!isValidUniversityEmail(formData.email)) {
-      alert("Please use your official university email.");
+      setError("Please use your official university email (e.g., ending in .edu or .ac).");
       return;
     }
 
     try {
+      setLoading(true);
+
+      // Step 1: Create a sign‑in attempt
       const result = await signIn.create({
         identifier: formData.email,
         password: formData.password,
       });
 
-      await setActive({
-        session: result.createdSessionId,
-      });
-
-      alert("Login successful!");
-      router.push("/");
-
+      // Step 2: Finish sign‑in and set active session
+      if (result.status === "complete") {
+        await setActive({ session: result.createdSessionId });
+        router.push("/profile");
+      } else {
+        setError("Additional steps required. Please check your email.");
+      }
     } catch (err) {
-      console.log("LOGIN ERROR:", err);
+      console.error("LOGIN ERROR:", err);
 
-      alert(
+      const msg =
         err?.errors?.[0]?.longMessage ||
-        "Invalid email or password. Please try again."
-      );
+        err?.errors?.[0]?.message ||
+        err.message ||
+        "Invalid email or password.";
+      setError(msg);
+    } finally {
+      setLoading(false);
     }
   };
+
+  // Render loading placeholder until Clerk finishes
+  if (typeof isLoaded === "undefined" || !isLoaded)
+    return (
+      <>
+        <Navbar />
+        <div className={styles.page}>
+          <p style={{ textAlign: "center", color: "#666" }}>
+            Loading authentication…
+          </p>
+        </div>
+      </>
+    );
 
   return (
     <>
@@ -99,20 +98,22 @@ const Login = () => {
             />
           </div>
 
-          <h1 className={styles.title}>Welcome Back</h1>
-
+          <h1 className={styles.title}>Welcome Back</h1>
           <p className={styles.desc}>
-            Login using your university credentials
+            Log in with your university credentials
           </p>
+
+          {error && <div className={styles.error}>{error}</div>}
 
           <form className={styles.form} onSubmit={handleLogin}>
             <input
               type="email"
               name="email"
-              placeholder="University Email"
+              placeholder="University Email"
               value={formData.email}
               onChange={handleChange}
               required
+              autoComplete="email"
             />
 
             <input
@@ -122,21 +123,26 @@ const Login = () => {
               value={formData.password}
               onChange={handleChange}
               required
+              autoComplete="current-password"
             />
 
-            <button className={styles.button} type="submit">
-              Login
+            <button
+              className={styles.button}
+              type="submit"
+              disabled={loading}
+            >
+              {loading ? "Logging in…" : "Login"}
             </button>
           </form>
 
           <p className={styles.message}>
-            Don’t have an account?{" "}
-            <Link href="/auth/signup">Sign Up</Link>
+            Don’t have an account?{" "}
+            <Link href="/auth/signup" className={styles.link}>
+              Sign Up
+            </Link>
           </p>
         </div>
       </div>
     </>
   );
-};
-
-export default Login;
+}

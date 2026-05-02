@@ -2,62 +2,104 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useSignUp } from "@clerk/nextjs";
+import { useSignUp, useAuth } from "@clerk/nextjs";
+import { isValidUniversityEmail } from "@/lib/universityEmailValidator";
 import styles from "../auth/signup/signup.module.css";
 
 export default function VerifyEmailPage() {
   const router = useRouter();
   const { isLoaded, signUp, setActive } = useSignUp();
+  const { isSignedIn } = useAuth();
 
   const [loading, setLoading] = useState(false);
   const [code, setCode] = useState("");
+  const [error, setError] = useState("");
+  const [email, setEmail] = useState("");
 
+  // Redirect if already signed in
   useEffect(() => {
-    console.log("VERIFY PAGE STATE:", { isLoaded, signUp });
-  }, [isLoaded, signUp]);
+    if (isSignedIn) {
+      router.push("/");
+    }
+  }, [isSignedIn, router]);
+
+  // Get email from session storage on mount
+  useEffect(() => {
+    const storedEmail = sessionStorage.getItem("signupEmail");
+    if (storedEmail) {
+      setEmail(storedEmail);
+      
+      // Extra validation: Ensure email is still valid university email
+      if (!isValidUniversityEmail(storedEmail)) {
+        setError("Invalid university email. Please sign up again.");
+        setTimeout(() => router.push("/auth/signup"), 2000);
+      }
+    } else {
+      setError("No email found. Please sign up first.");
+      setTimeout(() => router.push("/auth/signup"), 2000);
+    }
+  }, [router]);
 
   const handleVerify = async (e) => {
     e.preventDefault();
+    setError("");
 
-    console.log("VERIFY CLICKED");
+    // Validate code format
+    if (!code || code.trim().length === 0) {
+      setError("Please enter the verification code");
+      return;
+    }
+
+    if (code.length < 6) {
+      setError("Verification code should be at least 6 characters");
+      return;
+    }
 
     if (!isLoaded || !signUp) {
-      alert("Clerk is not ready. Refresh the page.");
+      setError("Authentication is not ready. Please refresh the page.");
       return;
     }
 
     try {
       setLoading(true);
 
-      console.log("Submitting verification code:", code);
+      console.log("🔍 Submitting verification code for:", email);
 
       const result = await signUp.attemptEmailAddressVerification({
-        code,
+        code: code.trim(),
       });
 
-      console.log("Verification result:", result);
+      console.log("✅ Verification result:", result.status);
 
       if (result.status === "complete") {
+        // Verify university email one more time on success
+        if (!isValidUniversityEmail(email)) {
+          throw new Error("Email verification failed: Not a valid university email");
+        }
+
+        console.log("🎉 Session activating...");
         await setActive({
           session: result.createdSessionId,
         });
 
-        console.log("SESSION ACTIVATED");
+        // Clear session storage
+        sessionStorage.removeItem("signupEmail");
 
+        console.log("✅ User successfully registered with university email");
         router.push("/");
       } else {
-        console.log("Unexpected status:", result.status);
-        alert("Verification not complete. Try again.");
+        setError(`Verification incomplete. Status: ${result.status}`);
       }
     } catch (err) {
-      console.log("VERIFICATION ERROR:", err);
+      console.error("🔥 Verification error:", err);
 
-      alert(
+      const errorMessage =
         err?.errors?.[0]?.longMessage ||
         err?.errors?.[0]?.message ||
         err?.message ||
-        "Verification failed"
-      );
+        "Verification failed. Please try again.";
+
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -69,22 +111,55 @@ export default function VerifyEmailPage() {
         <h1 className={styles.title}>Verify Your Email</h1>
 
         <p className={styles.desc}>
-          Enter the verification code sent to your email
+          {email ? (
+            <>
+              Enter the verification code sent to<br />
+              <strong>{email}</strong>
+            </>
+          ) : (
+            "Enter the verification code sent to your email"
+          )}
         </p>
 
-        <form onSubmit={handleVerify} className={styles.form}>
-          <input
-            type="text"
-            placeholder="Enter verification code"
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            required
-          />
+        {error && <div className={styles.error}>{error}</div>}
 
-          <button type="submit" disabled={loading}>
+        <form onSubmit={handleVerify} className={styles.form}>
+          <div className={styles.formGroup}>
+            <label htmlFor="code">Verification Code</label>
+            <input
+              id="code"
+              type="text"
+              placeholder="Enter 6-digit code"
+              value={code}
+              onChange={(e) => {
+                setCode(e.target.value);
+                setError("");
+              }}
+              required
+              maxLength="8"
+              autoComplete="off"
+            />
+          </div>
+
+          <button 
+            type="submit" 
+            className={styles.button}
+            disabled={loading}
+          >
             {loading ? "Verifying..." : "Verify Email"}
           </button>
         </form>
+
+        <p className={styles.footer}>
+          Didn't receive the code?{" "}
+          <a 
+            href="/auth/signup" 
+            className={styles.link}
+            onClick={() => sessionStorage.removeItem("signupEmail")}
+          >
+            Sign up again
+          </a>
+        </p>
       </div>
     </div>
   );

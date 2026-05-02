@@ -1,50 +1,48 @@
-import connectDB from "@/lib/mongodb";
+import dbConnect from "@/lib/mongodb";
 import Ride from "@/lib/models/Ride";
 
-// GET all rides
 export async function GET() {
   try {
-    await connectDB();
+    await dbConnect();
 
-    const rides = await Ride.find().sort({ createdAt: -1 });
+    const rides = await Ride.find({});
 
     return Response.json({
       success: true,
       rides,
     });
   } catch (error) {
+    console.error("❌ GET rides error:", error);
+
     return Response.json({
       success: false,
-      message: error.message,
+      message: "Failed to fetch rides",
     });
   }
 }
 
-// POST new ride
 export async function POST(req) {
   try {
-    await connectDB();
+    await dbConnect();
 
     const body = await req.json();
 
-    const newRide = await Ride.create({
-      driver: body.driver,
-      from: body.from,
-      to: body.to,
-      date: body.date,
-      time: body.time,
-      seats: body.seats,
-      price: body.price,
-    });
+    console.log("📥 Incoming ride:", body);
+
+    const newRide = await Ride.create(body);
+
+    console.log("✅ Ride saved:", newRide);
 
     return Response.json({
       success: true,
       ride: newRide,
     });
   } catch (error) {
+    console.error("❌ POST ride error:", error);
+
     return Response.json({
       success: false,
-      message: error.message,
+      message: "Failed to create ride",
     });
   }
 }
