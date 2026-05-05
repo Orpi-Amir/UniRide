@@ -12,22 +12,25 @@ export async function syncUserToDB() {
 
   await connectDB();
 
-  const email = clerkUser.emailAddresses[0]?.emailAddress;
+  const email = clerkUser.primaryEmailAddress?.emailAddress;
+  if (!email) return null;
 
-  let user = await User.findOne({ email });
+  const updatedUser = await User.findOneAndUpdate(
+    { clerkId: clerkUser.id },
+    {
+      $set: {
+        email,
+        name: clerkUser.fullName || "User",
+        image: clerkUser.imageUrl || "",
+      },
+      $setOnInsert: {
+        university: "",
+        phone: "",
+        bio: "",
+      },
+    },
+    { new: true, upsert: true }
+  );
 
-  if (!user) {
-    console.log("🆕 Creating new MongoDB user");
-
-    user = await User.create({
-      name: clerkUser.fullName || "User",
-      email: email,
-      image: clerkUser.imageUrl,
-      rides: [],
-    });
-  } else {
-    console.log("✅ User already exists in DB");
-  }
-
-  return user;
+  return updatedUser;
 }

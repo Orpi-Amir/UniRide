@@ -21,6 +21,22 @@ const rideSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    fromCoords: {
+      type: [Number],
+      default: [],
+      validate: {
+        validator: (value) => value.length === 0 || value.length === 2,
+        message: "fromCoords must contain [lat, lng]",
+      },
+    },
+    toCoords: {
+      type: [Number],
+      default: [],
+      validate: {
+        validator: (value) => value.length === 0 || value.length === 2,
+        message: "toCoords must contain [lat, lng]",
+      },
+    },
 
     // 📅 Schedule
     date: {
@@ -51,6 +67,38 @@ const rideSchema = new mongoose.Schema(
     bookedUsers: {
       type: [String], // store emails for now
       default: [],
+    },
+    passengerPickups: {
+      type: [
+        {
+          email: { type: String, required: true, trim: true },
+          label: { type: String, default: "", trim: true },
+          coords: {
+            type: [Number],
+            default: [],
+            validate: {
+              validator: (value) => value.length === 0 || value.length === 2,
+              message: "pickup coords must contain [lat, lng]",
+            },
+          },
+          updatedAt: { type: Date, default: Date.now },
+        },
+      ],
+      default: [],
+    },
+    driverLiveLocation: {
+      coords: {
+        type: [Number],
+        default: [],
+        validate: {
+          validator: (value) => value.length === 0 || value.length === 2,
+          message: "driver live coords must contain [lat, lng]",
+        },
+      },
+      updatedAt: {
+        type: Date,
+        default: null,
+      },
     },
   },
   {

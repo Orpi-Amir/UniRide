@@ -9,7 +9,7 @@ export const universities = [
   },
   {
     name: "Arab Open University",
-    domains: ["std.aou.org.bh"]
+    domains: ["std.aou.org.bh", "std.org.aou.bh", "aou.org.bh"]
   },
   {
     name: "Ahlia University",

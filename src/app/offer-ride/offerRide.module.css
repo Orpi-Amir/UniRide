@@ -157,3 +157,39 @@
 .button:hover {
   opacity: 0.9;
 }
+
+.mapWrap {
+  margin-bottom: 16px;
+}
+
+.hint {
+  font-size: 13px;
+  color: #64748b;
+  margin: 0 0 16px;
+  line-height: 1.45;
+  text-align: left;
+}
+
+.banner {
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.45;
+  margin: 0 0 12px;
+  text-align: left;
+  border: 1px solid #e5e7eb;
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+.bannerError {
+  border-color: rgba(239, 68, 68, 0.35);
+  background: rgba(254, 226, 226, 0.55);
+  color: #7f1d1d;
+}
+
+.bannerInfo {
+  border-color: rgba(99, 102, 241, 0.25);
+  background: rgba(238, 242, 255, 0.75);
+  color: #1e1b4b;
+}

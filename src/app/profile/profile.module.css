@@ -87,3 +87,12 @@
   font-weight: 600;
   cursor: pointer;
 }
+
+.loading {
+  min-height: 40vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
+  font-weight: 600;
+}

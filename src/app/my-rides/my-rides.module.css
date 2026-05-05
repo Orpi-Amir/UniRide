@@ -66,3 +66,47 @@
   right: -60px;
   background: #fed7aa;
 }
+
+.rowActions {
+  margin-top: 12px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.btn {
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  font-weight: 700;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.btnDanger {
+  background: #ef4444;
+  color: #fff;
+}
+
+.btnWarn {
+  background: #f97316;
+  color: #fff;
+}
+
+.banner {
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.45;
+  margin: 0 0 16px;
+  text-align: left;
+  border: 1px solid #e5e7eb;
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+.bannerError {
+  border-color: rgba(239, 68, 68, 0.35);
+  background: rgba(254, 226, 226, 0.55);
+  color: #7f1d1d;
+}

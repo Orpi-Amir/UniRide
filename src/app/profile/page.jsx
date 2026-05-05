@@ -7,35 +7,50 @@ import { useUser } from "@clerk/nextjs";
 import { isValidUniversityEmail } from "@/lib/universityEmailValidator";
 import { universities } from "@/lib/universities";
 import { useRouter } from "next/navigation";
+import { useToast } from "@/components/ToastProvider";
 
 export default function ProfilePage() {
   const { user, isLoaded } = useUser();
   const router = useRouter();
+  const { showSuccess, showError } = useToast();
 
   const [editing, setEditing] = useState(false);
   const [formData, setFormData] = useState({
+    fullName: "",
     university: "",
     phone: "",
     bio: "",
   });
   const [initialized, setInitialized] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (isLoaded && user && !initialized) {
       const primaryEmail = user.primaryEmailAddress?.emailAddress || "";
       // validate with your global validator
       if (!isValidUniversityEmail(primaryEmail)) {
-        alert("Access denied: only university email addresses are allowed.");
-        router.push("/");
+        router.push("/auth/not-university");
         return;
       }
 
-      setFormData({
-        university: "",
-        phone: user.phoneNumbers?.[0]?.phoneNumber || "",
-        bio: "",
-      });
-      setInitialized(true);
+      const bootstrapProfile = async () => {
+        try {
+          const res = await fetch("/api/users/me");
+          const data = await res.json();
+          if (data.success) {
+            setFormData({
+              fullName: data.user.name || user.fullName || "",
+              university: data.user.university || "",
+              phone: data.user.phone || user.phoneNumbers?.[0]?.phoneNumber || "",
+              bio: data.user.bio || "",
+            });
+          }
+        } finally {
+          setInitialized(true);
+        }
+      };
+
+      bootstrapProfile();
     }
   }, [isLoaded, user, initialized, router]);
 
@@ -46,12 +61,52 @@ export default function ProfilePage() {
     });
   };
 
-  const handleSave = () => {
-    setEditing(false);
-    alert("Profile updated successfully!");
+  const handleSave = async () => {
+    try {
+      setSaving(true);
+
+      if (user?.update && formData.fullName.trim()) {
+        const nameParts = formData.fullName.trim().split(/\s+/);
+        const firstName = nameParts[0];
+        const lastName = nameParts.slice(1).join(" ");
+        await user.update({
+          firstName,
+          lastName: lastName || null,
+        });
+      }
+
+      const res = await fetch("/api/users/me", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+      });
+      const data = await res.json();
+
+      if (!data.success) {
+        const msg = data.message || "Failed to update profile";
+        showError(msg);
+        return;
+      }
+
+      setEditing(false);
+      showSuccess("Profile updated successfully.");
+    } catch {
+      showError("Network error while saving your profile.");
+    } finally {
+      setSaving(false);
+    }
   };
 
-  if (!isLoaded) return <div>Loading...</div>;
+  if (!isLoaded) {
+    return (
+      <>
+        <Navbar />
+        <div className={styles.page}>
+          <div className={styles.loading}>Loading profile…</div>
+        </div>
+      </>
+    );
+  }
 
   if (!user) {
     router.push("/auth/login");
@@ -80,7 +135,13 @@ export default function ProfilePage() {
             <div className={styles.form}>
               <div className={styles.field}>
                 <label>Full Name</label>
-                <input type="text" value={user.fullName || ""} disabled />
+                <input
+                  type="text"
+                  name="fullName"
+                  value={formData.fullName}
+                  onChange={handleChange}
+                  disabled={!editing}
+                />
               </div>
 
               <div className={styles.field}>
@@ -93,7 +154,7 @@ export default function ProfilePage() {
                 <input
                   type="text"
                   name="university"
-                  value={universityName || formData.university}
+                  value={formData.university || universityName}
                   onChange={handleChange}
                   disabled={!editing}
                 />
@@ -128,8 +189,8 @@ export default function ProfilePage() {
                   Edit Profile
                 </button>
               ) : (
-                <button className={styles.saveButton} onClick={handleSave}>
-                  Save Changes
+                <button className={styles.saveButton} onClick={handleSave} disabled={saving}>
+                  {saving ? "Saving..." : "Save Changes"}
                 </button>
               )}
             </div>

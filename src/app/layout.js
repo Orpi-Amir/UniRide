@@ -1,9 +1,8 @@
 import { ClerkProvider } from "@clerk/nextjs";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-
-// Prevent Leaflet SSR issues globally (safe flag for your app)
-import dynamic from "next/dynamic";
+import AuthSync from "@/components/AuthSync";
+import { ToastProvider } from "@/components/ToastProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -16,12 +15,6 @@ const geistMono = Geist_Mono({
 });
 
 export default function RootLayout({ children }) {
-  console.log("🔧 RootLayout loaded");
-  console.log(
-    "📦 Clerk Key:",
-    process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ? "SET" : "NOT SET"
-  );
-
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable}`}>
@@ -29,12 +22,13 @@ export default function RootLayout({ children }) {
         <ClerkProvider
           publishableKey={process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
           afterSignOutUrl="/"
-          signInFallbackRedirectUrl="/find-ride"
-          signUpFallbackRedirectUrl="/verify-email"
+          signInFallbackRedirectUrl="/profile"
+          signUpFallbackRedirectUrl="/profile"
         >
-          
-          {/* UniRide App Wrapper */}
-          {children}
+          <ToastProvider>
+            <AuthSync />
+            {children}
+          </ToastProvider>
 
         </ClerkProvider>
 

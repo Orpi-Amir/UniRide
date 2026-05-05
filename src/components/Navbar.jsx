@@ -10,9 +10,20 @@ import {
 const Navbar = () => {
   const { isSignedIn, isLoaded } = useUser();
 
-  // Prevent hydration/render issues while Clerk loads
   if (!isLoaded) {
-    return null;
+    return (
+      <nav className={styles.navbar} aria-busy="true">
+        <div className={styles.logo}>
+          <span style={{ color: "#f4a6b8" }}>Uni</span>
+          <span style={{ color: "#f7b267" }}>Ride</span>
+        </div>
+        <div className={styles.skeletonLinks} aria-hidden="true">
+          <div className={styles.skeletonPill} />
+          <div className={styles.skeletonPill} />
+          <div className={styles.skeletonPill} />
+        </div>
+      </nav>
+    );
   }
 
   return (
@@ -42,6 +53,10 @@ const Navbar = () => {
 
         <Link href="/my-rides" className={styles.link}>
           My Rides
+        </Link>
+
+        <Link href="/chat" className={styles.link}>
+          Chat
         </Link>
 
         <Link href="/profile" className={styles.link}>

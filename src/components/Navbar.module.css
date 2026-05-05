@@ -1,11 +1,13 @@
 .navbar {
   width: 100%;
-  padding: 1rem 2rem;
+  padding: 14px 22px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background-color: #fff;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid #eef2f7;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
   position: sticky;
   top: 0;
   z-index: 100;
@@ -19,16 +21,62 @@
 
 .links {
   display: flex;
-  gap: 1rem;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .link {
   text-decoration: none;
-  color: #333;
-  font-weight: 500;
-  transition: 0.3s;
+  color: #0f172a;
+  font-weight: 600;
+  font-size: 14px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  transition: background 0.2s ease, color 0.2s ease;
 }
 
 .link:hover {
-  color: #ff6f91;
+  background: rgba(244, 114, 182, 0.12);
+  color: #db2777;
+}
+
+.skeletonLinks {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.skeletonPill {
+  width: 72px;
+  height: 12px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #f1f5f9, #e2e8f0, #f1f5f9);
+  background-size: 200% 100%;
+  animation: shimmer 1.2s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 0% 0%;
+  }
+  100% {
+    background-position: 200% 0%;
+  }
+}
+
+@media (max-width: 860px) {
+  .navbar {
+    padding: 12px 14px;
+  }
+
+  .links {
+    gap: 6px;
+  }
+
+  .link {
+    padding: 8px 8px;
+    font-size: 13px;
+  }
 }
