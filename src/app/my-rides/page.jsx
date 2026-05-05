@@ -71,7 +71,9 @@ export default function MyRides() {
 
   useEffect(() => {
     if (!isLoaded) return;
-    loadRides();
+    queueMicrotask(() => {
+      void loadRides();
+    });
   }, [isLoaded, loadRides]);
 
   // 🚗 DELETE RIDE

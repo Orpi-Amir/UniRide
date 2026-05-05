@@ -1,13 +1,15 @@
 "use client";
 
 import { useSignUp, useAuth, useClerk } from "@clerk/nextjs";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 
 export default function DebugPage() {
   const { isLoaded: signUpLoaded, signUp } = useSignUp();
   const { isSignedIn, isLoaded: authLoaded } = useAuth();
   const { loaded: clerkLoaded } = useClerk();
-  const [clerkStatus, setClerkStatus] = useState("Checking...");
+
+  const clerkStatus =
+    clerkLoaded && authLoaded && signUpLoaded ? "✅ ALL LOADED" : "⏳ Still loading...";
 
   useEffect(() => {
     console.log("=== CLERK DEBUG INFO ===");
@@ -16,12 +18,6 @@ export default function DebugPage() {
     console.log("clerkLoaded:", clerkLoaded);
     console.log("isSignedIn:", isSignedIn);
     console.log("signUp object:", signUp);
-    
-    if (clerkLoaded && authLoaded && signUpLoaded) {
-      setClerkStatus("✅ ALL LOADED");
-    } else {
-      setClerkStatus("⏳ Still loading...");
-    }
   }, [signUpLoaded, authLoaded, clerkLoaded, isSignedIn, signUp]);
 
   return (

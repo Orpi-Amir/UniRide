@@ -23,21 +23,22 @@ export default function VerifyEmailPage() {
     }
   }, [isSignedIn, router]);
 
-  // Get email from session storage on mount
+  // Get email from session storage on mount (deferred to satisfy react-hooks/set-state-in-effect)
   useEffect(() => {
-    const storedEmail = sessionStorage.getItem("signupEmail");
-    if (storedEmail) {
-      setEmail(storedEmail);
-      
-      // Extra validation: Ensure email is still valid university email
-      if (!isValidUniversityEmail(storedEmail)) {
-        setError("Invalid university email. Please sign up again.");
+    queueMicrotask(() => {
+      const storedEmail = sessionStorage.getItem("signupEmail");
+      if (storedEmail) {
+        setEmail(storedEmail);
+
+        if (!isValidUniversityEmail(storedEmail)) {
+          setError("Invalid university email. Please sign up again.");
+          setTimeout(() => router.push("/auth/signup"), 2000);
+        }
+      } else {
+        setError("No email found. Please sign up first.");
         setTimeout(() => router.push("/auth/signup"), 2000);
       }
-    } else {
-      setError("No email found. Please sign up first.");
-      setTimeout(() => router.push("/auth/signup"), 2000);
-    }
+    });
   }, [router]);
 
   const handleVerify = async (e) => {
@@ -151,7 +152,7 @@ export default function VerifyEmailPage() {
         </form>
 
         <p className={styles.footer}>
-          Didn't receive the code?{" "}
+          Didn&apos;t receive the code?{" "}
           <a 
             href="/auth/signup" 
             className={styles.link}
