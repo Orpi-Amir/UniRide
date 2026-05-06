@@ -17,12 +17,36 @@ async function fetchDrivingRouteCoords(fromCoords, toCoords) {
   return coords.map(([lng, lat]) => [lat, lng]);
 }
 
+const NOMINATIM_HEADERS = {
+  "Accept-Language": "en-US,en;q=0.9",
+  /** Nominatim requires an identifiable User-Agent per usage policy */
+  "User-Agent": "UniRide/1.0 (university carpool app)",
+};
+
 async function reverseGeocode(lat, lng) {
   try {
+    const params = new URLSearchParams({
+      format: "jsonv2",
+      namedetails: "1",
+      "accept-language": "en-US,en",
+      lat: String(lat),
+      lon: String(lng),
+    });
     const res = await fetch(
-      `https://nominatim.openstreetmap.org/reverse?format=jsonv2&namedetails=1&accept-language=en&lat=${lat}&lon=${lng}`
+      `https://nominatim.openstreetmap.org/reverse?${params.toString()}`,
+      { headers: NOMINATIM_HEADERS }
     );
     const data = await res.json();
+    const addr = data?.address;
+    if (addr && typeof addr === "object") {
+      const road = addr.road || addr.pedestrian || addr.path || "";
+      const suburb = addr.suburb || addr.neighbourhood || addr.quarter || "";
+      const city =
+        addr.city || addr.town || addr.village || addr.municipality || addr.county || "";
+      const country = addr.country || "";
+      const parts = [road, suburb, city, country].filter(Boolean);
+      if (parts.length) return parts.join(", ");
+    }
     return (
       data?.display_name ||
       data?.name ||
@@ -112,13 +136,16 @@ export default function MapView({
         markerZoomAnimation: false,
       });
 
-      // Stadia tiles require an API key in production and return 401 without one.
-      L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
-        attribution:
-          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-        subdomains: "abcd",
-        maxZoom: 20,
-      }).addTo(map);
+      // Carto/OSM raster tiles often follow local OSM name:* tags (e.g. Arabic in BH).
+      // Esri World Street Map biases toward English labeling at most zoom levels for reporting/navigation.
+      L.tileLayer(
+        "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
+        {
+          attribution:
+            '&copy; <a href="https://www.esri.com/">Esri</a>, Maxar, Earthstar Geographics, and the GIS User Community',
+          maxZoom: 19,
+        }
+      ).addTo(map);
 
       markersLayerRef.current = L.layerGroup().addTo(map);
       routeLayerRef.current = L.layerGroup().addTo(map);
