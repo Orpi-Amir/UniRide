@@ -4,6 +4,8 @@ import { getAuthorizedUniversityUser } from "@/lib/serverAuth";
 
 export async function DELETE(req, { params }) {
   try {
+    const { id: rideId } = await params;
+
     const authResult = await getAuthorizedUniversityUser();
     if (authResult.error) {
       return Response.json(
@@ -13,7 +15,7 @@ export async function DELETE(req, { params }) {
     }
 
     await dbConnect();
-    const ride = await Ride.findById(params.id);
+    const ride = await Ride.findById(rideId);
 
     if (!ride) {
       return Response.json({ success: false, message: "Ride not found" }, { status: 404 });
@@ -26,7 +28,7 @@ export async function DELETE(req, { params }) {
       );
     }
 
-    await Ride.findByIdAndDelete(params.id);
+    await Ride.findByIdAndDelete(rideId);
     return Response.json({ success: true, message: "Ride deleted successfully" });
   } catch (error) {
     return Response.json({ success: false, message: error.message }, { status: 500 });

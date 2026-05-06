@@ -31,6 +31,8 @@ function haversineDistanceKm(fromCoords, toCoords) {
 
 export async function GET(req, { params }) {
   try {
+    const { id: rideId } = await params;
+
     const authResult = await getAuthorizedUniversityUser();
     if (authResult.error) {
       return Response.json(
@@ -41,7 +43,7 @@ export async function GET(req, { params }) {
 
     await connectDB();
 
-    const ride = await Ride.findById(params.id);
+    const ride = await Ride.findById(rideId);
     if (!ride) {
       return Response.json({ success: false, message: "Ride not found" }, { status: 404 });
     }

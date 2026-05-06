@@ -3,6 +3,7 @@ import Ride from "@/lib/models/Ride";
 import User from "@/lib/models/User";
 import { getAuthorizedUniversityUser } from "@/lib/serverAuth";
 import Ably from "ably";
+import { parseAblyRootKey } from "@/lib/ablyRootKey";
 
 // BOOK A RIDE
 export async function POST(req) {
@@ -109,8 +110,9 @@ export async function POST(req) {
     }
 
     try {
-      if (process.env.ABLY_API_KEY) {
-        const ably = new Ably.Rest(process.env.ABLY_API_KEY);
+      const ablyParsed = parseAblyRootKey(process.env.ABLY_API_KEY);
+      if (ablyParsed.ok) {
+        const ably = new Ably.Rest(ablyParsed.key);
         await ably.channels.get(`ride:${String(ride._id)}`).publish("message", {
           type: "system",
           text: `${authResult.email} requested to join this ride. Driver can accept in My Rides.`,

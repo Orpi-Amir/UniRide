@@ -2,10 +2,13 @@ import connectDB from "@/lib/mongodb";
 import Ride from "@/lib/models/Ride";
 import { getAuthorizedUniversityUser } from "@/lib/serverAuth";
 import { isRideChatParticipant } from "@/lib/rideParticipant";
+import { parseAblyRootKey } from "@/lib/ablyRootKey";
 import Ably from "ably";
 
 export async function GET(req, { params }) {
   try {
+    const { id: rideId } = await params;
+
     const authResult = await getAuthorizedUniversityUser();
     if (authResult.error) {
       return Response.json(
@@ -14,17 +17,17 @@ export async function GET(req, { params }) {
       );
     }
 
-    const ablyApiKey = process.env.ABLY_API_KEY;
-    if (!ablyApiKey) {
+    const ablyParsed = parseAblyRootKey(process.env.ABLY_API_KEY);
+    if (!ablyParsed.ok) {
       return Response.json(
-        { success: false, message: "ABLY_API_KEY is missing in environment variables" },
+        { success: false, message: ablyParsed.error },
         { status: 500 }
       );
     }
 
     await connectDB();
 
-    const ride = await Ride.findById(params.id).lean();
+    const ride = await Ride.findById(rideId).lean();
     if (!ride) {
       return Response.json({ success: false, message: "Ride not found" }, { status: 404 });
     }
@@ -42,7 +45,7 @@ export async function GET(req, { params }) {
     // Ably clientId allows only [a-zA-Z0-9_-] — emails contain @ and "." and break the connection.
     const ablyClientId = authResult.userId.replace(/[^a-zA-Z0-9_-]/g, "_");
 
-    const rest = new Ably.Rest(ablyApiKey);
+    const rest = new Ably.Rest(ablyParsed.key);
     const tokenRequest = await rest.auth.createTokenRequest({
       clientId: ablyClientId,
       capability: {
@@ -58,6 +61,12 @@ export async function GET(req, { params }) {
       tokenRequest,
     });
   } catch (error) {
-    return Response.json({ success: false, message: error.message }, { status: 500 });
+    const raw = error?.message || "Chat authentication failed";
+    const lower = String(raw).toLowerCase();
+    const message =
+      lower.includes("key") || lower.includes("401") || lower.includes("credential")
+        ? `${raw} Check ABLY_API_KEY in Vercel (or .env.local): use the full Ably root key APP_ID.KEY_ID:SECRET with no spaces or quotes.`
+        : raw;
+    return Response.json({ success: false, message }, { status: 500 });
   }
 }

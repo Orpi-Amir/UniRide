@@ -4,6 +4,8 @@ import { getAuthorizedUniversityUser } from "@/lib/serverAuth";
 
 export async function GET(req, { params }) {
   try {
+    const { id: rideId } = await params;
+
     const authResult = await getAuthorizedUniversityUser();
     if (authResult.error) {
       return Response.json(
@@ -13,7 +15,7 @@ export async function GET(req, { params }) {
     }
 
     await connectDB();
-    const ride = await Ride.findById(params.id).lean();
+    const ride = await Ride.findById(rideId).lean();
     if (!ride) {
       return Response.json({ success: false, message: "Ride not found" }, { status: 404 });
     }
@@ -46,6 +48,8 @@ export async function GET(req, { params }) {
 
 export async function POST(req, { params }) {
   try {
+    const { id: rideId } = await params;
+
     const authResult = await getAuthorizedUniversityUser();
     if (authResult.error) {
       return Response.json(
@@ -65,7 +69,7 @@ export async function POST(req, { params }) {
     }
 
     await connectDB();
-    const ride = await Ride.findById(params.id).lean();
+    const ride = await Ride.findById(rideId).lean();
     if (!ride) {
       return Response.json({ success: false, message: "Ride not found" }, { status: 404 });
     }
@@ -78,7 +82,7 @@ export async function POST(req, { params }) {
     }
 
     await Ride.updateOne(
-      { _id: params.id, driver: ride.driver },
+      { _id: rideId, driver: ride.driver },
       {
         $set: {
           driverLiveLocation: {
