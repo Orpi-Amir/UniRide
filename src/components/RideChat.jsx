@@ -33,14 +33,80 @@ function formatDistance(km) {
   return `${km.toFixed(1)} km away`;
 }
 
+function deriveSenderEmail(data) {
+  const fromPayload = (data?.senderEmail || data?.sender || "").toLowerCase().trim();
+  if (fromPayload.includes("@")) return fromPayload;
+  return fromPayload;
+}
+
+function waitForChatConnected(realtime, timeoutMs = 25000) {
+  return new Promise((resolve, reject) => {
+    if (realtime.connection.state === "connected") {
+      resolve();
+      return;
+    }
+    let settled = false;
+    const timer = setTimeout(() => {
+      teardown();
+      if (!settled) {
+        settled = true;
+        reject(new Error("Chat connection timed out"));
+      }
+    }, timeoutMs);
+
+    const teardown = () => {
+      clearTimeout(timer);
+      realtime.connection.off("connected", onConnected);
+      realtime.connection.off("failed", onFailed);
+    };
+
+    const onConnected = () => {
+      if (settled) return;
+      settled = true;
+      teardown();
+      resolve();
+    };
+
+    const onFailed = () => {
+      if (settled) return;
+      settled = true;
+      teardown();
+      reject(
+        new Error(
+          realtime.connection.errorReason?.message || "Chat connection failed"
+        )
+      );
+    };
+
+    realtime.connection.on("connected", onConnected);
+    realtime.connection.on("failed", onFailed);
+  });
+}
+
+function messagePayloadFrom(itemData) {
+  const sender = itemData?.sender || "";
+  const type =
+    itemData?.type ||
+    (sender === "System" ? "system" : itemData?.coords ? "location" : "message");
+  return {
+    text: itemData?.text || "",
+    type,
+    coords: itemData?.coords || null,
+    sender,
+    senderEmail: deriveSenderEmail(itemData),
+  };
+}
+
 export default function RideChat({ rideId, currentUserEmail, onError }) {
+  const userEmail = (currentUserEmail || "").toLowerCase().trim();
   const [loading, setLoading] = useState(true);
+  const [ready, setReady] = useState(false);
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [sharingLocation, setSharingLocation] = useState(false);
   const [currentCoords, setCurrentCoords] = useState(null);
-  const [connectionState, setConnectionState] = useState("connecting");
+  const [connectionOk, setConnectionOk] = useState(false);
   const clientRef = useRef(null);
   const channelRef = useRef(null);
   const listRef = useRef(null);
@@ -54,13 +120,17 @@ export default function RideChat({ rideId, currentUserEmail, onError }) {
   const upsertMessage = (incoming) => {
     if (!incoming) return;
     setMessages((prev) => {
+      const rawEmail = deriveSenderEmail({
+        senderEmail: incoming.senderEmail,
+        sender: incoming.sender,
+      });
       const normalized = {
         id: incoming.id || `${incoming.sender}-${incoming.timestamp}-${incoming.text}`,
         text: incoming.text || "",
         type: incoming.type || "message",
         coords: incoming.coords || null,
         sender: incoming.sender || "Unknown",
-        senderEmail: incoming.senderEmail || "",
+        senderEmail: rawEmail,
         timestamp: incoming.timestamp || Date.now(),
       };
       const existingIndex = prev.findIndex((item) => item.id === normalized.id);
@@ -73,7 +143,8 @@ export default function RideChat({ rideId, currentUserEmail, onError }) {
 
   useEffect(() => {
     let mounted = true;
-    let unsubscribe = null;
+    let messageListener = null;
+    const connectionHandlers = [];
 
     const fetchChatAuth = async () => {
       const authRes = await fetch(`/api/rides/${rideId}/chat-auth`, { cache: "no-store" });
@@ -87,29 +158,10 @@ export default function RideChat({ rideId, currentUserEmail, onError }) {
       try {
         const authData = await fetchChatAuth();
 
-        await new Promise((resolve, reject) => {
-          if (window.Ably) return resolve();
+        const AblyModule = await import("ably");
+        const Ably = AblyModule.default ?? AblyModule;
 
-          const existing = document.querySelector('script[data-ably-sdk="true"]');
-          if (existing) {
-            existing.addEventListener("load", () => resolve(), { once: true });
-            existing.addEventListener("error", () => reject(new Error("Failed to load chat SDK")), {
-              once: true,
-            });
-            return;
-          }
-
-          const script = document.createElement("script");
-          script.src = "https://cdn.ably.com/lib/ably.min-1.js";
-          script.async = true;
-          script.dataset.ablySdk = "true";
-          script.onload = () => resolve();
-          script.onerror = () => reject(new Error("Failed to load chat SDK"));
-          document.body.appendChild(script);
-        });
-
-        const ably = window.Ably;
-        const realtime = new ably.Realtime({
+        const realtime = new Ably.Realtime({
           clientId: authData.ablyClientId,
           authCallback: async (_, callback) => {
             try {
@@ -121,53 +173,67 @@ export default function RideChat({ rideId, currentUserEmail, onError }) {
               }
               const tokenData = await fetchChatAuth();
               if (!tokenData.tokenRequest) {
-                callback("Unable to authorize chat");
+                callback(new Error("Unable to authorize chat"));
                 return;
               }
               callback(null, tokenData.tokenRequest);
-            } catch {
-              callback("Unable to authorize chat");
+            } catch (err) {
+              callback(err instanceof Error ? err : new Error("Unable to authorize chat"));
             }
           },
         });
+
+        await waitForChatConnected(realtime);
+
         const channel = realtime.channels.get(authData.channelName);
-        realtime.connection.on((stateChange) => {
-          if (!mounted) return;
-          setConnectionState(stateChange.current || "unknown");
-        });
+        await channel.attach();
 
         clientRef.current = realtime;
         channelRef.current = channel;
 
+        if (mounted) {
+          setConnectionOk(realtime.connection.state === "connected");
+          setReady(true);
+        }
+
+        const syncConnectionUi = () => {
+          if (!mounted) return;
+          setConnectionOk(realtime.connection.state === "connected");
+        };
+        ["connected", "disconnected", "failed", "suspended", "closing"].forEach(
+          (ev) => {
+            realtime.connection.on(ev, syncConnectionUi);
+            connectionHandlers.push([ev, syncConnectionUi]);
+          }
+        );
+
         channel.history({ limit: 50 }, (err, page) => {
           if (err || !mounted) return;
-          const existingMessages = (page.items || []).map((item) => ({
-            id: item.id,
-            text: item.data?.text || "",
-            type: item.data?.type || "message",
-            coords: item.data?.coords || null,
-            sender: item.data?.sender || item.clientId || "Unknown",
-            senderEmail: (item.data?.senderEmail || "").toLowerCase().trim(),
-            timestamp: item.timestamp || Date.now(),
-          }));
+          const existingMessages = (page.items || []).map((item) => {
+            const payload = messagePayloadFrom(item.data);
+            return {
+              id: item.id,
+              ...payload,
+              timestamp: item.timestamp || Date.now(),
+            };
+          });
           setMessages([]);
           existingMessages.forEach(upsertMessage);
         });
 
-        unsubscribe = channel.subscribe("message", (msg) => {
+        messageListener = (msg) => {
           if (!mounted) return;
+          const payload = messagePayloadFrom(msg.data);
           upsertMessage({
             id: msg.id,
-            text: msg.data?.text || "",
-            type: msg.data?.type || "message",
-            coords: msg.data?.coords || null,
-            sender: msg.data?.sender || msg.clientId || "Unknown",
-            senderEmail: (msg.data?.senderEmail || "").toLowerCase().trim(),
+            ...payload,
             timestamp: msg.timestamp || Date.now(),
           });
-        });
+        };
+        await channel.subscribe("message", messageListener);
       } catch (error) {
         onError?.(error.message || "Unable to load chat");
+        if (mounted) setConnectionOk(false);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -177,10 +243,21 @@ export default function RideChat({ rideId, currentUserEmail, onError }) {
 
     return () => {
       mounted = false;
-      if (unsubscribe) unsubscribe();
-      if (clientRef.current) clientRef.current.close();
+      const client = clientRef.current;
+      const chan = channelRef.current;
+      if (chan && messageListener) {
+        chan.unsubscribe("message", messageListener);
+      }
+      if (client) {
+        connectionHandlers.forEach(([ev, fn]) => {
+          client.connection.off(ev, fn);
+        });
+        client.close();
+      }
       clientRef.current = null;
       channelRef.current = null;
+      setReady(false);
+      setConnectionOk(false);
     };
   }, [rideId, onError]);
 
@@ -192,26 +269,26 @@ export default function RideChat({ rideId, currentUserEmail, onError }) {
   const send = async (e) => {
     e.preventDefault();
     const content = text.trim();
-    if (!content || !channelRef.current) return;
+    if (!content || !channelRef.current || !ready) return;
 
     try {
       setSending(true);
       await channelRef.current.publish("message", {
         type: "message",
         text: content,
-        sender: currentUserEmail,
-        senderEmail: currentUserEmail,
+        sender: userEmail,
+        senderEmail: userEmail,
       });
       setText("");
-    } catch {
-      onError?.("Failed to send message");
+    } catch (err) {
+      onError?.(err?.message || "Failed to send message");
     } finally {
       setSending(false);
     }
   };
 
   const shareLocation = async () => {
-    if (!channelRef.current || sharingLocation) return;
+    if (!channelRef.current || sharingLocation || !ready) return;
     if (!navigator?.geolocation) {
       onError?.("Geolocation is not supported in this browser");
       return;
@@ -230,10 +307,10 @@ export default function RideChat({ rideId, currentUserEmail, onError }) {
       setCurrentCoords(coords);
       await channelRef.current.publish("message", {
         type: "location",
-        text: "Shared live location",
+        text: "Shared location",
         coords,
-        sender: currentUserEmail,
-        senderEmail: currentUserEmail,
+        sender: userEmail,
+        senderEmail: userEmail,
       });
     } catch {
       onError?.("Unable to share your current location");
@@ -243,61 +320,72 @@ export default function RideChat({ rideId, currentUserEmail, onError }) {
   };
 
   if (loading) {
-    return <div className={styles.empty}>Loading chat...</div>;
+    return <div className={styles.empty}>Connecting to chat…</div>;
   }
 
   return (
     <div className={styles.chatShell}>
       <div className={styles.toolbar}>
-        <div className={styles.status}>
-          Chat status:{" "}
-          <span className={connectionState === "connected" ? styles.statusOnline : ""}>
-            {connectionState}
-          </span>
+        <div className={styles.connectionDotWrap}>
+          <span className={connectionOk ? styles.dotOnline : styles.dotOffline} title={connectionOk ? "Connected" : "Reconnecting"} />
+          <span className={styles.connectionLabel}>{connectionOk ? "Online" : "Offline"}</span>
         </div>
         <button
           type="button"
           onClick={shareLocation}
-          disabled={sharingLocation}
+          disabled={sharingLocation || !ready}
           className={styles.actionBtn}
         >
-          {sharingLocation ? "Sharing..." : "Share my location"}
+          {sharingLocation ? "…" : "Share location"}
         </button>
       </div>
       <div ref={listRef} className={styles.messages}>
         {sortedMessages.length === 0 ? (
-          <div className={styles.empty}>No messages yet.</div>
+          <div className={styles.empty}>No messages yet — say hello or confirm pickup details.</div>
         ) : (
           sortedMessages.map((msg) => {
-            const own = (msg.senderEmail || "").toLowerCase().trim() === currentUserEmail;
+            if (msg.type === "system") {
+              return (
+                <div key={msg.id} className={styles.rowSystem}>
+                  <div className={styles.systemBubble}>
+                    <div className={styles.systemText}>{msg.text}</div>
+                    <div className={styles.meta}>{formatTime(msg.timestamp)}</div>
+                  </div>
+                </div>
+              );
+            }
+
+            const own =
+              msg.type !== "system" &&
+              ((msg.senderEmail || "").toLowerCase().trim() === userEmail ||
+                (!msg.senderEmail?.includes("@") && msg.sender === userEmail));
             const coords =
               Array.isArray(msg.coords) && msg.coords.length === 2 ? msg.coords : null;
-            const mapsUrl = coords
-              ? `https://www.google.com/maps?q=${coords[0]},${coords[1]}`
-              : "";
+            const mapsUrl = coords ? `https://www.google.com/maps?q=${coords[0]},${coords[1]}` : "";
+            const label =
+              msg.type === "location"
+                ? own
+                  ? "You shared a location"
+                  : `${msg.sender} shared a location`
+                : own
+                  ? "You"
+                  : msg.senderEmail?.includes("@")
+                    ? msg.senderEmail
+                    : msg.sender;
+
             return (
-              <div
-                key={msg.id}
-                className={`${styles.row} ${own ? styles.rowOwn : ""}`}
-              >
+              <div key={msg.id} className={`${styles.row} ${own ? styles.rowOwn : ""}`}>
                 <div className={`${styles.bubble} ${own ? styles.bubbleOwn : styles.bubbleOther}`}>
-                  <div className={styles.sender}>{own ? "You" : msg.sender}</div>
-                  <div className={styles.text}>
-                    {msg.type === "location" ? "Location update shared" : msg.text}
-                  </div>
+                  <div className={styles.sender}>{label}</div>
+                  {msg.type === "message" ? <div className={styles.text}>{msg.text}</div> : null}
                   {msg.type === "location" && coords ? (
                     <div className={styles.locationMeta}>
                       Lat: {Number(coords[0]).toFixed(5)}, Lng: {Number(coords[1]).toFixed(5)}
-                      {msg.sender !== currentUserEmail && currentCoords
+                      {!own && currentCoords
                         ? ` • ${formatDistance(haversineDistanceKm(currentCoords, coords))}`
                         : ""}
                       <br />
-                      <a
-                        className={styles.mapLink}
-                        href={mapsUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
+                      <a className={styles.mapLink} href={mapsUrl} target="_blank" rel="noreferrer">
                         Open in Maps
                       </a>
                     </div>
@@ -314,11 +402,12 @@ export default function RideChat({ rideId, currentUserEmail, onError }) {
           type="text"
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="Type a message for this ride..."
+          placeholder={ready ? "Write a message…" : "Connecting…"}
           className={styles.input}
+          disabled={!ready}
         />
-        <button type="submit" disabled={sending || !text.trim()} className={styles.sendBtn}>
-          {sending ? "..." : "Send"}
+        <button type="submit" disabled={sending || !text.trim() || !ready} className={styles.sendBtn}>
+          Send
         </button>
       </form>
     </div>

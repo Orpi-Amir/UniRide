@@ -111,10 +111,11 @@ export async function POST(req) {
     try {
       if (process.env.ABLY_API_KEY) {
         const ably = new Ably.Rest(process.env.ABLY_API_KEY);
-        await ably.channels.get(`ride:${ride._id}`).publish("message", {
+        await ably.channels.get(`ride:${String(ride._id)}`).publish("message", {
           type: "system",
           text: `${authResult.email} requested to join this ride. Driver can accept in My Rides.`,
           sender: "System",
+          senderEmail: "system",
         });
       }
     } catch {}

@@ -56,10 +56,11 @@ export async function POST(req) {
     try {
       if (process.env.ABLY_API_KEY) {
         const ably = new Ably.Rest(process.env.ABLY_API_KEY);
-        await ably.channels.get(`ride:${ride._id}`).publish("message", {
+        await ably.channels.get(`ride:${String(ride._id)}`).publish("message", {
           type: "system",
           text: `Driver accepted ${email}'s booking request. You can now chat and share live location.`,
           sender: "System",
+          senderEmail: "system",
         });
       }
     } catch {}
