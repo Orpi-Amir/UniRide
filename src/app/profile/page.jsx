@@ -20,6 +20,7 @@ export default function ProfilePage() {
     university: "",
     phone: "",
     bio: "",
+    gender: "any",
   });
   const [initialized, setInitialized] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -43,6 +44,7 @@ export default function ProfilePage() {
               university: data.user.university || "",
               phone: data.user.phone || user.phoneNumbers?.[0]?.phoneNumber || "",
               bio: data.user.bio || "",
+              gender: data.user.gender || "any",
             });
           }
         } finally {
@@ -179,6 +181,20 @@ export default function ProfilePage() {
                   onChange={handleChange}
                   disabled={!editing}
                 />
+              </div>
+
+              <div className={styles.field}>
+                <label>Gender</label>
+                <select
+                  name="gender"
+                  value={formData.gender}
+                  onChange={handleChange}
+                  disabled={!editing}
+                >
+                  <option value="any">Prefer not to say / Any</option>
+                  <option value="female">Female</option>
+                  <option value="male">Male</option>
+                </select>
               </div>
 
               {!editing ? (

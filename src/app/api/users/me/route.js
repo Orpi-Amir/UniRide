@@ -20,6 +20,7 @@ async function getOrCreateUser() {
         university: "",
         phone: "",
         bio: "",
+        gender: "any",
       },
     },
     { new: true, upsert: true }
@@ -53,6 +54,9 @@ export async function PATCH(req) {
       university: (body.university || "").trim(),
       phone: (body.phone || "").trim(),
       bio: (body.bio || "").trim(),
+      gender: ["any", "female", "male"].includes((body.gender || "").toLowerCase())
+        ? (body.gender || "").toLowerCase()
+        : result.user.gender || "any",
     };
 
     const user = await User.findByIdAndUpdate(result.user._id, updates, { new: true });

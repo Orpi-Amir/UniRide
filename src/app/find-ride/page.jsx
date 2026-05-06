@@ -30,6 +30,13 @@ function haversineDistanceKm(fromCoords, toCoords) {
   return earthRadiusKm * c;
 }
 
+function parseTimeToMinutes(value) {
+  if (!value || typeof value !== "string" || !value.includes(":")) return null;
+  const [h, m] = value.split(":").map(Number);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+  return h * 60 + m;
+}
+
 const FindRide = () => {
   const { user, isLoaded } = useUser();
   const router = useRouter();
@@ -40,8 +47,12 @@ const FindRide = () => {
   const [searched, setSearched] = useState(false);
 
   const [formData, setFormData] = useState({
-    from: "",
     to: "",
+    pickup: "",
+    date: "",
+    earliestTime: "",
+    latestTime: "",
+    driverGender: "any",
     seats: 1,
   });
   const [bookingRideId, setBookingRideId] = useState("");
@@ -92,17 +103,29 @@ const FindRide = () => {
     setNotice("");
 
     const results = allRides.filter((ride) => {
-      const fromMatch = formData.from
-        ? ride.from.toLowerCase().includes(formData.from.toLowerCase())
-        : true;
-
       const toMatch = formData.to
         ? ride.to.toLowerCase().includes(formData.to.toLowerCase())
         : true;
 
+      const pickupMatch = formData.pickup
+        ? ride.from.toLowerCase().includes(formData.pickup.toLowerCase())
+        : true;
+
+      const dateMatch = formData.date ? ride.date === formData.date : true;
+
+      const rideTime = parseTimeToMinutes(ride.time);
+      const earliest = parseTimeToMinutes(formData.earliestTime);
+      const latest = parseTimeToMinutes(formData.latestTime);
+      const earliestMatch = earliest === null || rideTime === null || rideTime >= earliest;
+      const latestMatch = latest === null || rideTime === null || rideTime <= latest;
+
+      const genderMatch =
+        formData.driverGender === "any" ||
+        (ride.driverGender || "any") === formData.driverGender;
+
       const seatsMatch = ride.seats >= Number(formData.seats || 1);
 
-      return fromMatch && toMatch && seatsMatch;
+      return toMatch && pickupMatch && dateMatch && earliestMatch && latestMatch && genderMatch && seatsMatch;
     });
 
     setRides(results);
@@ -137,7 +160,7 @@ const FindRide = () => {
         body: JSON.stringify({
           rideId,
           pickupCoords: Array.isArray(pickupCoords) && pickupCoords.length === 2 ? pickupCoords : undefined,
-          pickupLabel: formData.from || "",
+          pickupLabel: formData.pickup || "",
         }),
       });
 
@@ -218,7 +241,7 @@ const FindRide = () => {
               routeFromCurrentToCoords={selectedRouteCoords}
               setFromCoords={(coords) => setPickupCoords(coords)}
               setFromLocation={(location) =>
-                setFormData((prev) => ({ ...prev, from: location }))
+                setFormData((prev) => ({ ...prev, pickup: location }))
               }
               setToLocation={(location) =>
                 setFormData((prev) => ({ ...prev, to: location }))
@@ -227,7 +250,7 @@ const FindRide = () => {
           </div>
 
           <p className={styles.hint}>
-            Click the map to auto-fill pickup and dropoff, or use the text search below.
+            Search by destination first. Pickup and time filters are optional to give you more ride options.
           </p>
           {Array.isArray(pickupCoords) && pickupCoords.length === 2 ? (
             <p className={styles.hint}>Your pickup location will be shared with the driver after booking.</p>
@@ -237,21 +260,56 @@ const FindRide = () => {
           <form className={styles.searchForm} onSubmit={handleSearch}>
             <input
               type="text"
-              name="from"
-              placeholder="From location"
-              value={formData.from}
+              name="to"
+              placeholder="Where do you want to go? (e.g., University)"
+              value={formData.to}
               onChange={handleChange}
               className={styles.input}
             />
 
             <input
               type="text"
-              name="to"
-              placeholder="To location"
-              value={formData.to}
+              name="pickup"
+              placeholder="Optional pickup area"
+              value={formData.pickup}
               onChange={handleChange}
               className={styles.input}
             />
+
+            <input
+              type="date"
+              name="date"
+              value={formData.date}
+              onChange={handleChange}
+              className={styles.input}
+            />
+
+            <input
+              type="time"
+              name="earliestTime"
+              value={formData.earliestTime}
+              onChange={handleChange}
+              className={styles.input}
+            />
+
+            <input
+              type="time"
+              name="latestTime"
+              value={formData.latestTime}
+              onChange={handleChange}
+              className={styles.input}
+            />
+
+            <select
+              name="driverGender"
+              value={formData.driverGender}
+              onChange={handleChange}
+              className={styles.input}
+            >
+              <option value="any">Any driver</option>
+              <option value="female">Female driver</option>
+              <option value="male">Male driver</option>
+            </select>
 
             <input
               type="number"
@@ -279,6 +337,7 @@ const FindRide = () => {
                   <p><strong>To:</strong> {ride.to}</p>
                   <p><strong>Date:</strong> {ride.date}</p>
                   <p><strong>Time:</strong> {ride.time}</p>
+                  <p><strong>Driver Gender:</strong> {ride.driverGender || "any"}</p>
                   <p><strong>Seats:</strong> {ride.seats}</p>
                   <p><strong>Price:</strong> {ride.price}</p>
                   {Array.isArray(pickupCoords) &&

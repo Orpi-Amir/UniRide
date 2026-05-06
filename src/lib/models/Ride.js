@@ -8,6 +8,13 @@ const rideSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    driverGender: {
+      type: String,
+      enum: ["any", "female", "male"],
+      default: "any",
+      trim: true,
+      lowercase: true,
+    },
 
     // 📍 Route details
     from: {

@@ -26,6 +26,7 @@ export async function POST() {
           university: "",
           phone: "",
           bio: "",
+          gender: "any",
         },
       },
       { new: true, upsert: true }

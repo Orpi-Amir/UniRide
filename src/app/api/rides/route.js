@@ -1,16 +1,24 @@
 import dbConnect from "@/lib/mongodb";
 import Ride from "@/lib/models/Ride";
+import User from "@/lib/models/User";
 import { getAuthorizedUniversityUser } from "@/lib/serverAuth";
 
 export async function GET() {
   try {
     await dbConnect();
 
-    const rides = await Ride.find({});
+    const rides = await Ride.find({}).lean();
+    const driverEmails = [...new Set(rides.map((ride) => ride.driver).filter(Boolean))];
+    const drivers = await User.find({ email: { $in: driverEmails } }).select("email gender").lean();
+    const genderByEmail = new Map(drivers.map((driver) => [driver.email, driver.gender || "any"]));
+    const ridesWithDriverGender = rides.map((ride) => ({
+      ...ride,
+      driverGender: ride.driverGender || genderByEmail.get(ride.driver) || "any",
+    }));
 
     return Response.json({
       success: true,
-      rides,
+      rides: ridesWithDriverGender,
     });
   } catch (error) {
     console.error("❌ GET rides error:", error);
@@ -70,6 +78,8 @@ export async function POST(req) {
     const newRide = await Ride.create({
       ...body,
       driver: authResult.email,
+      driverGender:
+        (await User.findOne({ email: authResult.email }).select("gender").lean())?.gender || "any",
     });
 
     console.log("✅ Ride saved:", newRide);
