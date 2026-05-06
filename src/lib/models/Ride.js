@@ -75,6 +75,30 @@ const rideSchema = new mongoose.Schema(
       type: [String], // store emails for now
       default: [],
     },
+    bookingRequests: {
+      type: [
+        {
+          email: { type: String, required: true, trim: true, lowercase: true },
+          pickupLabel: { type: String, default: "", trim: true },
+          pickupCoords: {
+            type: [Number],
+            default: [],
+            validate: {
+              validator: (value) => value.length === 0 || value.length === 2,
+              message: "request pickup coords must contain [lat, lng]",
+            },
+          },
+          status: {
+            type: String,
+            enum: ["pending", "accepted", "rejected"],
+            default: "pending",
+          },
+          requestedAt: { type: Date, default: Date.now },
+          decidedAt: { type: Date, default: null },
+        },
+      ],
+      default: [],
+    },
     passengerPickups: {
       type: [
         {

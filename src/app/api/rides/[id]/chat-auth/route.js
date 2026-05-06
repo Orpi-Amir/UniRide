@@ -28,9 +28,11 @@ export async function GET(req, { params }) {
       return Response.json({ success: false, message: "Ride not found" }, { status: 404 });
     }
 
-    const email = authResult.email;
-    const isDriver = ride.driver === email;
-    const isPassenger = (ride.bookedUsers || []).includes(email);
+    const email = authResult.email.toLowerCase().trim();
+    const isDriver = (ride.driver || "").toLowerCase().trim() === email;
+    const isPassenger = (ride.bookedUsers || []).some(
+      (entry) => (entry || "").toLowerCase().trim() === email
+    );
 
     if (!isDriver && !isPassenger) {
       return Response.json(

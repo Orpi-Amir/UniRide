@@ -185,6 +185,25 @@ export default function MyRides() {
     }
   };
 
+  const acceptBooking = async (rideId, passengerEmail) => {
+    try {
+      const res = await fetch("/api/bookings/accept", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rideId, passengerEmail }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        showError(data.message || "Failed to accept booking");
+        return;
+      }
+      showSuccess("Booking accepted. Passenger can now chat with you.");
+      loadRides();
+    } catch {
+      showError("Network error while accepting booking.");
+    }
+  };
+
   const loadContacts = async (rideId) => {
     try {
       const res = await fetch(`/api/rides/${rideId}/contacts`);
@@ -367,6 +386,26 @@ export default function MyRides() {
                             : ""}
                         </div>
                       ))}
+                    </div>
+                  ) : null}
+                  {(ride.bookingRequests || []).some((request) => request.status === "pending") ? (
+                    <div className={styles.banner} style={{ marginTop: "10px" }}>
+                      <strong>Pending Booking Requests</strong>
+                      {(ride.bookingRequests || [])
+                        .filter((request) => request.status === "pending")
+                        .map((request) => (
+                          <div key={`${ride._id || ride.id}-${request.email}`} style={{ marginTop: "8px" }}>
+                            <div>{request.email}</div>
+                            {request.pickupLabel ? <div>Pickup: {request.pickupLabel}</div> : null}
+                            <button
+                              type="button"
+                              className={`${styles.btn} ${styles.btnWarn}`}
+                              onClick={() => acceptBooking(ride._id || ride.id, request.email)}
+                            >
+                              Accept Booking
+                            </button>
+                          </div>
+                        ))}
                     </div>
                   ) : null}
                 </div>

@@ -45,9 +45,11 @@ export async function GET(req, { params }) {
       return Response.json({ success: false, message: "Ride not found" }, { status: 404 });
     }
 
-    const requesterEmail = authResult.email;
-    const isDriver = ride.driver === requesterEmail;
-    const isPassenger = (ride.bookedUsers || []).includes(requesterEmail);
+    const requesterEmail = authResult.email.toLowerCase().trim();
+    const isDriver = (ride.driver || "").toLowerCase().trim() === requesterEmail;
+    const isPassenger = (ride.bookedUsers || []).some(
+      (entry) => (entry || "").toLowerCase().trim() === requesterEmail
+    );
 
     if (!isDriver && !isPassenger) {
       return Response.json(
@@ -59,7 +61,9 @@ export async function GET(req, { params }) {
     const driver = await User.findOne({ email: ride.driver }).lean();
 
     if (isPassenger) {
-      const pickup = (ride.passengerPickups || []).find((entry) => entry.email === requesterEmail);
+      const pickup = (ride.passengerPickups || []).find(
+        (entry) => (entry.email || "").toLowerCase().trim() === requesterEmail
+      );
       const pickupDistanceFromDriverStartKm = haversineDistanceKm(
         ride.fromCoords,
         pickup?.coords

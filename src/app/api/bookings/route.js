@@ -2,6 +2,7 @@ import connectDB from "@/lib/mongodb";
 import Ride from "@/lib/models/Ride";
 import User from "@/lib/models/User";
 import { getAuthorizedUniversityUser } from "@/lib/serverAuth";
+import Ably from "ably";
 
 // BOOK A RIDE
 export async function POST(req) {
@@ -46,10 +47,23 @@ export async function POST(req) {
       });
     }
 
-    if (ride.driver === authResult.email) {
+    if ((ride.driver || "").toLowerCase().trim() === authResult.email) {
       return Response.json({
         success: false,
         message: "You cannot book your own ride",
+      });
+    }
+
+    const alreadyRequested = (ride.bookingRequests || []).some(
+      (request) => (request.email || "").toLowerCase().trim() === authResult.email
+    );
+    const alreadyBooked = (ride.bookedUsers || []).some(
+      (email) => (email || "").toLowerCase().trim() === authResult.email
+    );
+    if (alreadyRequested || alreadyBooked) {
+      return Response.json({
+        success: false,
+        message: "You already requested or booked this ride",
       });
     }
 
@@ -68,24 +82,21 @@ export async function POST(req) {
       });
     }
 
-    const pickupEntry = {
-      email: authResult.email,
-      label: typeof pickupLabel === "string" ? pickupLabel.trim() : "",
-      coords: Array.isArray(pickupCoords) ? pickupCoords : [],
-      updatedAt: new Date(),
-    };
-
     const updatedRide = await Ride.findOneAndUpdate(
       {
         _id: rideId,
         driver: { $ne: authResult.email },
-        seats: { $gt: 0 },
-        bookedUsers: { $ne: authResult.email },
       },
       {
-        $inc: { seats: -1 },
-        $push: { bookedUsers: authResult.email },
-        $pull: { passengerPickups: { email: authResult.email } },
+        $push: {
+          bookingRequests: {
+            email: authResult.email,
+            pickupLabel: typeof pickupLabel === "string" ? pickupLabel.trim() : "",
+            pickupCoords: Array.isArray(pickupCoords) ? pickupCoords : [],
+            status: "pending",
+            requestedAt: new Date(),
+          },
+        },
       },
       { new: true }
     );
@@ -93,16 +104,24 @@ export async function POST(req) {
     if (!updatedRide) {
       return Response.json({
         success: false,
-        message: "Booking unavailable (no seats left or already booked)",
+        message: "Booking request unavailable",
       });
     }
 
-    updatedRide.passengerPickups = [...(updatedRide.passengerPickups || []), pickupEntry];
-    await updatedRide.save();
+    try {
+      if (process.env.ABLY_API_KEY) {
+        const ably = new Ably.Rest(process.env.ABLY_API_KEY);
+        await ably.channels.get(`ride:${ride._id}`).publish("message", {
+          type: "system",
+          text: `${authResult.email} requested to join this ride. Driver can accept in My Rides.`,
+          sender: "System",
+        });
+      }
+    } catch {}
 
     return Response.json({
       success: true,
-      message: "Ride booked successfully",
+      message: "Booking request sent. Wait for driver acceptance.",
     });
   } catch (error) {
     return Response.json({

@@ -172,18 +172,9 @@ const FindRide = () => {
       const data = await res.json();
 
       if (data.success) {
-        showSuccess("Ride booked successfully.");
-        setAllRides((prev) =>
-          prev.map((ride) =>
-            ride._id === rideId ? { ...ride, seats: Math.max(ride.seats - 1, 0) } : ride
-          )
-        );
-        setRides((prev) =>
-          prev.map((ride) =>
-            ride._id === rideId ? { ...ride, seats: Math.max(ride.seats - 1, 0) } : ride
-          )
-        );
-        await loadRideContacts(rideId);
+        showSuccess(data.message || "Booking request sent.");
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        window.location.reload();
       } else {
         const msg = data.message || "Booking failed";
         setNotice(msg);
