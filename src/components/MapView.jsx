@@ -92,10 +92,31 @@ export default function MapView({
       currentLocationLayerRef.current = L.layerGroup().addTo(map);
       currentRouteLayerRef.current = L.layerGroup().addTo(map);
 
-      const selectionIcon = L.icon({
-        iconUrl: "/pin.png",
-        iconSize: [38, 38],
-        iconAnchor: [19, 38],
+      const selectionIcon = L.divIcon({
+        className: "uniride-selection-pin",
+        html: `
+          <div style="
+            width: 22px;
+            height: 22px;
+            background: linear-gradient(135deg, #f472b6, #fb923c);
+            border: 2px solid #ffffff;
+            border-radius: 50% 50% 50% 0;
+            transform: rotate(-45deg);
+            box-shadow: 0 3px 10px rgba(15, 23, 42, 0.24);
+          ">
+            <div style="
+              width: 8px;
+              height: 8px;
+              background: #ffffff;
+              border-radius: 50%;
+              position: relative;
+              top: 5px;
+              left: 5px;
+            "></div>
+          </div>
+        `,
+        iconSize: [22, 22],
+        iconAnchor: [11, 22],
       });
 
       const hasSelectionHandlers =

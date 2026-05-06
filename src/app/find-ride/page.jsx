@@ -41,6 +41,11 @@ const FindRide = () => {
   const { user, isLoaded } = useUser();
   const router = useRouter();
   const { showSuccess, showError } = useToast();
+  const currentUserEmail = (
+    user?.primaryEmailAddress?.emailAddress || user?.emailAddresses?.[0]?.emailAddress || ""
+  )
+    .toLowerCase()
+    .trim();
 
   const [rides, setRides] = useState([]);
   const [allRides, setAllRides] = useState([]);
@@ -332,6 +337,11 @@ const FindRide = () => {
             ) : rides.length > 0 ? (
               rides.map((ride) => (
                 <div key={ride._id} className={styles.rideCard}>
+                  {((ride.driver || "").toLowerCase().trim() === currentUserEmail) ? (
+                    <div className={styles.banner} style={{ marginBottom: "10px" }}>
+                      This is your own offered ride.
+                    </div>
+                  ) : null}
                   <p><strong>Driver:</strong> {ride.driver}</p>
                   <p><strong>From:</strong> {ride.from}</p>
                   <p><strong>To:</strong> {ride.to}</p>
@@ -353,10 +363,16 @@ const FindRide = () => {
                   <button
                     className={styles.bookButton}
                     onClick={() => bookRide(ride._id)}
-                    disabled={ride.seats <= 0 || bookingRideId === ride._id}
+                    disabled={
+                      ride.seats <= 0 ||
+                      bookingRideId === ride._id ||
+                      (ride.driver || "").toLowerCase().trim() === currentUserEmail
+                    }
                   >
                     {ride.seats <= 0
                       ? "No Seats Left"
+                      : (ride.driver || "").toLowerCase().trim() === currentUserEmail
+                      ? "Your Ride"
                       : bookingRideId === ride._id
                       ? "Booking..."
                       : "Book Ride"}
@@ -366,21 +382,16 @@ const FindRide = () => {
                     <button
                       className={styles.bookButton}
                       type="button"
-                      onClick={() =>
-                        setSelectedRouteCoords(
-                          Array.isArray(ride.fromCoords) && ride.fromCoords.length === 2
-                            ? ride.fromCoords
-                            : null
-                        )
-                      }
-                      disabled={!Array.isArray(ride.fromCoords) || ride.fromCoords.length !== 2}
+                      onClick={() => setSelectedRouteCoords(Array.isArray(pickupCoords) ? pickupCoords : null)}
+                      disabled={!Array.isArray(pickupCoords) || pickupCoords.length !== 2}
                     >
-                      Route to Pickup
+                      Route to My Pickup
                     </button>
                     <button
                       className={styles.bookButton}
                       type="button"
                       onClick={() => loadRideContacts(ride._id)}
+                      disabled={(ride.driver || "").toLowerCase().trim() === currentUserEmail}
                     >
                       Show Driver Contact
                     </button>

@@ -7,6 +7,22 @@ import { useUser } from "@clerk/nextjs";
 import { isValidUniversityEmail } from "@/lib/universityEmailValidator";
 import { useToast } from "@/components/ToastProvider";
 
+function haversineDistanceKm(fromCoords, toCoords) {
+  if (!Array.isArray(fromCoords) || !Array.isArray(toCoords)) return null;
+  const [lat1, lng1] = fromCoords;
+  const [lat2, lng2] = toCoords;
+  if ([lat1, lng1, lat2, lng2].some((value) => typeof value !== "number")) return null;
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const earthRadiusKm = 6371;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return earthRadiusKm * c;
+}
+
 export default function MyRides() {
   const { user, isLoaded } = useUser();
   const { showSuccess, showError } = useToast();
@@ -18,6 +34,8 @@ export default function MyRides() {
   const [liveByRide, setLiveByRide] = useState({});
   const [publishingRideId, setPublishingRideId] = useState("");
   const watchRef = useRef({ rideId: "", watchId: null });
+  const bookingCountRef = useRef({});
+  const bootstrappedBookingCountsRef = useRef(false);
 
   const loadRides = useCallback(async () => {
     if (!user) {
@@ -28,8 +46,9 @@ export default function MyRides() {
       return;
     }
 
-    const userEmail =
+    const userEmailRaw =
       user.primaryEmailAddress?.emailAddress || user.emailAddresses?.[0]?.emailAddress;
+    const userEmail = userEmailRaw?.toLowerCase().trim();
     if (!userEmail) {
       setLoading(false);
       return;
@@ -53,21 +72,46 @@ export default function MyRides() {
         return;
       }
 
-      const storedRides = data.rides;
+      const storedRides = data.rides || [];
 
-      const myOffered = storedRides.filter((ride) => ride.driver === userEmail);
+      const myOffered = storedRides.filter(
+        (ride) => (ride.driver || "").toLowerCase().trim() === userEmail
+      );
       setOfferedRides(myOffered);
 
       const myJoined = storedRides.filter(
-        (ride) => ride.bookedUsers && ride.bookedUsers.includes(userEmail)
+        (ride) =>
+          Array.isArray(ride.bookedUsers) &&
+          ride.bookedUsers.some((email) => (email || "").toLowerCase().trim() === userEmail)
       );
       setJoinedRides(myJoined);
+
+      const currentBookingCounts = {};
+      myOffered.forEach((ride) => {
+        const rideId = ride._id || ride.id;
+        currentBookingCounts[rideId] = Array.isArray(ride.bookedUsers) ? ride.bookedUsers.length : 0;
+      });
+
+      if (bootstrappedBookingCountsRef.current) {
+        myOffered.forEach((ride) => {
+          const rideId = ride._id || ride.id;
+          const previous = bookingCountRef.current[rideId] ?? 0;
+          const next = currentBookingCounts[rideId] ?? 0;
+          if (next > previous) {
+            showSuccess(`New booking received for ride: ${ride.from} to ${ride.to}`);
+          }
+        });
+      } else {
+        bootstrappedBookingCountsRef.current = true;
+      }
+
+      bookingCountRef.current = currentBookingCounts;
     } catch {
       setError("Network error while loading rides.");
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, showSuccess]);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -75,6 +119,14 @@ export default function MyRides() {
       void loadRides();
     });
   }, [isLoaded, loadRides]);
+
+  useEffect(() => {
+    if (!isLoaded || !user) return;
+    const interval = setInterval(() => {
+      void loadRides();
+    }, 20000);
+    return () => clearInterval(interval);
+  }, [isLoaded, user, loadRides]);
 
   // 🚗 DELETE RIDE
   const deleteRide = async (id) => {
@@ -269,6 +321,7 @@ export default function MyRides() {
                   <p><b>Time:</b> {ride.time}</p>
                   <p><b>Seats:</b> {ride.seats}</p>
                   <p><b>Price:</b> {ride.price}</p>
+                  <p><b>Bookings:</b> {(ride.bookedUsers || []).length}</p>
 
                   <div className={styles.rowActions}>
                     <button
@@ -363,6 +416,18 @@ export default function MyRides() {
                   liveByRide[ride._id || ride.id].coords.length === 2 ? (
                     <div className={styles.banner} style={{ marginTop: "10px" }}>
                       <strong>Driver live location</strong>
+                      {(() => {
+                        const passengerPickup = contactsByRide[ride._id || ride.id]?.pickup?.coords;
+                        const driverCoords = liveByRide[ride._id || ride.id].coords;
+                        const km = haversineDistanceKm(driverCoords, passengerPickup);
+                        const estimatedMinutes = typeof km === "number" ? Math.max(1, Math.round((km / 35) * 60)) : null;
+                        return typeof km === "number" ? (
+                          <div>
+                            Driver is about {km.toFixed(1)} km away from your pickup
+                            {estimatedMinutes ? ` (~${estimatedMinutes} min)` : ""}.
+                          </div>
+                        ) : null;
+                      })()}
                       <div>
                         Lat: {Number(liveByRide[ride._id || ride.id].coords[0]).toFixed(5)}, Lng:{" "}
                         {Number(liveByRide[ride._id || ride.id].coords[1]).toFixed(5)}

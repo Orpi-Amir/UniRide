@@ -15,7 +15,11 @@ export default function ChatPage() {
   const [selectedRideId, setSelectedRideId] = useState("");
 
   const currentEmail =
-    user?.primaryEmailAddress?.emailAddress || user?.emailAddresses?.[0]?.emailAddress || "";
+    (
+      user?.primaryEmailAddress?.emailAddress || user?.emailAddresses?.[0]?.emailAddress || ""
+    )
+      .toLowerCase()
+      .trim();
 
   useEffect(() => {
     const load = async () => {
@@ -33,13 +37,17 @@ export default function ChatPage() {
         }
 
         const participantRides = (data.rides || []).filter((ride) => {
-          const isDriver = ride.driver === currentEmail;
-          const isPassenger = (ride.bookedUsers || []).includes(currentEmail);
+          const isDriver = (ride.driver || "").toLowerCase().trim() === currentEmail;
+          const isPassenger = (ride.bookedUsers || []).some(
+            (email) => (email || "").toLowerCase().trim() === currentEmail
+          );
           return isDriver || isPassenger;
         });
 
         setRides(participantRides);
-        if (participantRides[0]?._id) setSelectedRideId(participantRides[0]._id);
+        if (!participantRides.find((ride) => ride._id === selectedRideId) && participantRides[0]?._id) {
+          setSelectedRideId(participantRides[0]._id);
+        }
       } catch {
         showError("Network error while loading chats");
       } finally {
@@ -48,7 +56,12 @@ export default function ChatPage() {
     };
 
     load();
-  }, [isLoaded, currentEmail, showError]);
+    if (!isLoaded || !currentEmail) return;
+    const interval = setInterval(() => {
+      void load();
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [isLoaded, currentEmail, showError, selectedRideId]);
 
   const selectedRide = useMemo(
     () => rides.find((r) => r._id === selectedRideId) || null,
