@@ -105,6 +105,16 @@ export default function ChatPage() {
 
   const contactsPayload = contactsByRideId[String(selectedRideId)] || null;
 
+  const { drivingRides, passengerRides } = useMemo(() => {
+    const driving = [];
+    const passenger = [];
+    for (const ride of rides) {
+      if (normalizeEmail(ride.driver) === currentEmail) driving.push(ride);
+      else passenger.push(ride);
+    }
+    return { drivingRides: driving, passengerRides: passenger };
+  }, [rides, currentEmail]);
+
   const rideParticipantsSummary = useMemo(() => {
     if (!selectedRide || !currentEmail) return { headline: "", sub: "" };
     const isDriver = normalizeEmail(selectedRide.driver) === currentEmail;
@@ -195,6 +205,62 @@ export default function ChatPage() {
     );
   };
 
+  const renderThreadItems = (list, emptyHint) => {
+    if (list.length === 0) {
+      return <p className={styles.sectionEmpty}>{emptyHint}</p>;
+    }
+    return (
+      <ul className={styles.threadList}>
+        {list.map((ride) => {
+          const id = String(ride._id);
+          const active = id === String(selectedRideId);
+          const isDrv = normalizeEmail(ride.driver) === currentEmail;
+          const headline = isDrv
+            ? `${ride.from} → ${ride.to}`
+            : normalizeEmail(ride.driver);
+
+          const pendingYou = (ride.bookingRequests || []).some(
+            (r) =>
+              normalizeEmail(r.email) === currentEmail &&
+              (r.status || "pending").toLowerCase() === "pending"
+          );
+          const confirmedYou = (ride.bookedUsers || []).some(
+            (e) => normalizeEmail(e) === currentEmail
+          );
+
+          return (
+            <li key={id}>
+              <button
+                type="button"
+                className={`${styles.threadBtn} ${active ? styles.threadBtnActive : ""}`}
+                onClick={() => setSelectedRideId(id)}
+              >
+                <span className={styles.threadRole}>
+                  {isDrv ? "You drive" : "You’re a passenger"}
+                </span>
+                <span className={styles.threadHeadline}>{headline}</span>
+                <span className={styles.threadMeta}>
+                  {ride.date} · {ride.time}
+                  {!isDrv ? (
+                    <>
+                      {" "}
+                      ·{" "}
+                      {confirmedYou
+                        ? "Seat confirmed"
+                        : pendingYou
+                          ? "Awaiting driver"
+                          : "In thread"}
+                    </>
+                  ) : null}
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    );
+  };
+
   return (
     <>
       <Navbar />
@@ -212,51 +278,20 @@ export default function ChatPage() {
                 No conversations yet. Request or offer a ride, then open Chat again.
               </p>
             ) : (
-              <ul className={styles.threadList}>
-                {rides.map((ride) => {
-                  const id = String(ride._id);
-                  const active = id === String(selectedRideId);
-                  const isDrv = normalizeEmail(ride.driver) === currentEmail;
-                  const headline = isDrv
-                    ? `Your ride · ${ride.from} → ${ride.to}`
-                    : `${normalizeEmail(ride.driver)}`;
-
-                  const pendingYou = (ride.bookingRequests || []).some(
-                    (r) =>
-                      normalizeEmail(r.email) === currentEmail &&
-                      (r.status || "pending").toLowerCase() === "pending"
-                  );
-                  const confirmedYou = (ride.bookedUsers || []).some(
-                    (e) => normalizeEmail(e) === currentEmail
-                  );
-
-                  return (
-                    <li key={id}>
-                      <button
-                        type="button"
-                        className={`${styles.threadBtn} ${active ? styles.threadBtnActive : ""}`}
-                        onClick={() => setSelectedRideId(id)}
-                      >
-                        <span className={styles.threadHeadline}>{headline}</span>
-                        <span className={styles.threadMeta}>
-                          {ride.date} · {ride.time}
-                          {!isDrv ? (
-                            <>
-                              {" "}
-                              ·{" "}
-                              {confirmedYou
-                                ? "Confirmed"
-                                : pendingYou
-                                  ? "Request pending"
-                                  : "Chat"}
-                            </>
-                          ) : null}
-                        </span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
+              <>
+                <div className={styles.sectionLabel}>Driving</div>
+                {renderThreadItems(
+                  drivingRides,
+                  "No chats for rides you host yet."
+                )}
+                <div className={`${styles.sectionLabel} ${styles.sectionLabelSpaced}`}>
+                  As a passenger
+                </div>
+                {renderThreadItems(
+                  passengerRides,
+                  "No chats as a passenger yet."
+                )}
+              </>
             )}
           </aside>
 

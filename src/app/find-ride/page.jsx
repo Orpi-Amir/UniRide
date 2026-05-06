@@ -233,8 +233,12 @@ const FindRide = () => {
           {/* 🗺️ MAP */}
           <div className={styles.mapWrap}>
             <MapView
-              rides={rides}
-              routeFromCurrentToCoords={selectedRouteCoords}
+              rides={searched ? rides : []}
+              routeFromCurrentToCoords={
+                Array.isArray(pickupCoords) && pickupCoords.length === 2
+                  ? selectedRouteCoords
+                  : null
+              }
               setFromCoords={(coords) => setPickupCoords(coords)}
               setFromLocation={(location) =>
                 setFormData((prev) => ({ ...prev, pickup: location }))
@@ -245,6 +249,9 @@ const FindRide = () => {
             />
           </div>
 
+          <p className={styles.hint}>
+            Routes on the map appear after you run <strong>Search</strong> — then only matching rides are drawn so the map stays readable.
+          </p>
           <p className={styles.hint}>
             Search by destination first. Pickup and time filters are optional to give you more ride options.
           </p>

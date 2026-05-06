@@ -39,47 +39,59 @@ function deriveSenderEmail(data) {
   return fromPayload;
 }
 
-function waitForChatConnected(realtime, timeoutMs = 25000) {
+function withTimeout(promise, ms, message) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      setTimeout(() => reject(new Error(message)), ms);
+    }),
+  ]);
+}
+
+/** Ably connection events vary by transport; poll state until connected or terminal failure. */
+function waitForChatConnected(realtime, timeoutMs = 22000) {
   return new Promise((resolve, reject) => {
-    if (realtime.connection.state === "connected") {
-      resolve();
-      return;
-    }
-    let settled = false;
-    const timer = setTimeout(() => {
-      teardown();
-      if (!settled) {
-        settled = true;
-        reject(new Error("Chat connection timed out"));
+    const deadline = Date.now() + timeoutMs;
+    let timer = null;
+
+    const finish = (fn) => {
+      if (timer !== null) clearInterval(timer);
+      timer = null;
+      fn();
+    };
+
+    const tick = () => {
+      const state = realtime.connection.state;
+      if (state === "connected") {
+        finish(() => resolve());
+        return;
       }
-    }, timeoutMs);
-
-    const teardown = () => {
-      clearTimeout(timer);
-      realtime.connection.off("connected", onConnected);
-      realtime.connection.off("failed", onFailed);
+      if (state === "failed" || state === "closed") {
+        finish(() =>
+          reject(
+            new Error(
+              realtime.connection.errorReason?.message || "Chat connection failed"
+            )
+          )
+        );
+        return;
+      }
+      if (state === "disconnected") {
+        const reason = realtime.connection.errorReason;
+        if (reason) {
+          finish(() =>
+            reject(new Error(reason.message || "Chat disconnected"))
+          );
+          return;
+        }
+      }
+      if (Date.now() >= deadline) {
+        finish(() => reject(new Error("Chat connection timed out")));
+      }
     };
 
-    const onConnected = () => {
-      if (settled) return;
-      settled = true;
-      teardown();
-      resolve();
-    };
-
-    const onFailed = () => {
-      if (settled) return;
-      settled = true;
-      teardown();
-      reject(
-        new Error(
-          realtime.connection.errorReason?.message || "Chat connection failed"
-        )
-      );
-    };
-
-    realtime.connection.on("connected", onConnected);
-    realtime.connection.on("failed", onFailed);
+    tick();
+    timer = setInterval(tick, 90);
   });
 }
 
@@ -99,8 +111,15 @@ function messagePayloadFrom(itemData) {
 
 export default function RideChat({ rideId, currentUserEmail, onError }) {
   const userEmail = (currentUserEmail || "").toLowerCase().trim();
-  const [loading, setLoading] = useState(true);
-  const [ready, setReady] = useState(false);
+  const onErrorRef = useRef(onError);
+  useEffect(() => {
+    onErrorRef.current = onError;
+  }, [onError]);
+
+  const [bootLoading, setBootLoading] = useState(true);
+  const [channelReady, setChannelReady] = useState(false);
+  const [initError, setInitError] = useState("");
+  const [retryTick, setRetryTick] = useState(0);
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -155,6 +174,13 @@ export default function RideChat({ rideId, currentUserEmail, onError }) {
     };
 
     const init = async () => {
+      if (mounted) {
+        setBootLoading(true);
+        setInitError("");
+        setChannelReady(false);
+        setConnectionOk(false);
+      }
+
       try {
         const authData = await fetchChatAuth();
 
@@ -186,14 +212,14 @@ export default function RideChat({ rideId, currentUserEmail, onError }) {
         await waitForChatConnected(realtime);
 
         const channel = realtime.channels.get(authData.channelName);
-        await channel.attach();
+        await withTimeout(channel.attach(), 18000, "Could not open chat channel");
 
         clientRef.current = realtime;
         channelRef.current = channel;
 
         if (mounted) {
+          setChannelReady(true);
           setConnectionOk(realtime.connection.state === "connected");
-          setReady(true);
         }
 
         const syncConnectionUi = () => {
@@ -232,10 +258,14 @@ export default function RideChat({ rideId, currentUserEmail, onError }) {
         };
         await channel.subscribe("message", messageListener);
       } catch (error) {
-        onError?.(error.message || "Unable to load chat");
-        if (mounted) setConnectionOk(false);
+        const msg = error?.message || "Unable to load chat";
+        if (mounted) {
+          setInitError(msg);
+          setConnectionOk(false);
+        }
+        onErrorRef.current?.(msg);
       } finally {
-        if (mounted) setLoading(false);
+        if (mounted) setBootLoading(false);
       }
     };
 
@@ -256,20 +286,22 @@ export default function RideChat({ rideId, currentUserEmail, onError }) {
       }
       clientRef.current = null;
       channelRef.current = null;
-      setReady(false);
+      setChannelReady(false);
       setConnectionOk(false);
     };
-  }, [rideId, onError]);
+  }, [rideId, retryTick]);
 
   useEffect(() => {
     if (!listRef.current) return;
     listRef.current.scrollTop = listRef.current.scrollHeight;
   }, [sortedMessages.length]);
 
+  const canSendMessages = channelReady && connectionOk;
+
   const send = async (e) => {
     e.preventDefault();
     const content = text.trim();
-    if (!content || !channelRef.current || !ready) return;
+    if (!content || !channelReady || !connectionOk || !channelRef.current) return;
 
     try {
       setSending(true);
@@ -288,7 +320,13 @@ export default function RideChat({ rideId, currentUserEmail, onError }) {
   };
 
   const shareLocation = async () => {
-    if (!channelRef.current || sharingLocation || !ready) return;
+    if (
+      !channelRef.current ||
+      sharingLocation ||
+      !channelReady ||
+      !connectionOk
+    )
+      return;
     if (!navigator?.geolocation) {
       onError?.("Geolocation is not supported in this browser");
       return;
@@ -319,21 +357,43 @@ export default function RideChat({ rideId, currentUserEmail, onError }) {
     }
   };
 
-  if (loading) {
-    return <div className={styles.empty}>Connecting to chat…</div>;
+  if (bootLoading && !channelReady && !initError) {
+    return <div className={styles.empty}>Opening chat…</div>;
   }
+
+  if (initError && !channelReady) {
+    return (
+      <div className={styles.chatShell}>
+        <div className={styles.initErrorBox}>
+          <p className={styles.initErrorText}>{initError}</p>
+          <button
+            type="button"
+            className={styles.retryBtn}
+            onClick={() => setRetryTick((t) => t + 1)}
+          >
+            Try again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const connectionLabel = connectionOk ? "Online" : channelReady ? "Reconnecting" : "Offline";
 
   return (
     <div className={styles.chatShell}>
       <div className={styles.toolbar}>
         <div className={styles.connectionDotWrap}>
-          <span className={connectionOk ? styles.dotOnline : styles.dotOffline} title={connectionOk ? "Connected" : "Reconnecting"} />
-          <span className={styles.connectionLabel}>{connectionOk ? "Online" : "Offline"}</span>
+          <span
+            className={connectionOk ? styles.dotOnline : styles.dotOffline}
+            title={connectionOk ? "Connected" : channelReady ? "Reconnecting to chat" : "Offline"}
+          />
+          <span className={styles.connectionLabel}>{connectionLabel}</span>
         </div>
         <button
           type="button"
           onClick={shareLocation}
-          disabled={sharingLocation || !ready}
+          disabled={sharingLocation || !canSendMessages}
           className={styles.actionBtn}
         >
           {sharingLocation ? "…" : "Share location"}
@@ -402,11 +462,21 @@ export default function RideChat({ rideId, currentUserEmail, onError }) {
           type="text"
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder={ready ? "Write a message…" : "Connecting…"}
+          placeholder={
+            !channelReady
+              ? "Opening chat…"
+              : !connectionOk
+                ? "Waiting to reconnect…"
+                : "Write a message…"
+          }
           className={styles.input}
-          disabled={!ready}
+          disabled={!canSendMessages}
         />
-        <button type="submit" disabled={sending || !text.trim() || !ready} className={styles.sendBtn}>
+        <button
+          type="submit"
+          disabled={sending || !text.trim() || !canSendMessages}
+          className={styles.sendBtn}
+        >
           Send
         </button>
       </form>

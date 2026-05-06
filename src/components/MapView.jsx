@@ -33,6 +33,39 @@ async function reverseGeocode(lat, lng) {
   }
 }
 
+function createRidePinIcon(L, { variant }) {
+  const bg =
+    variant === "start"
+      ? "linear-gradient(135deg, #22c55e, #16a34a)"
+      : "linear-gradient(135deg, #3b82f6, #2563eb)";
+  return L.divIcon({
+    className: "uniride-ride-map-pin",
+    html: `
+      <div style="
+        width: 26px;
+        height: 26px;
+        background: ${bg};
+        border: 2px solid #ffffff;
+        border-radius: 50% 50% 50% 0;
+        transform: rotate(-45deg);
+        box-shadow: 0 3px 10px rgba(15, 23, 42, 0.28);
+      ">
+        <div style="
+          width: 8px;
+          height: 8px;
+          background: #ffffff;
+          border-radius: 50%;
+          position: relative;
+          top: 6px;
+          left: 6px;
+        "></div>
+      </div>
+    `,
+    iconSize: [26, 26],
+    iconAnchor: [13, 26],
+  });
+}
+
 export default function MapView({
   setFromCoords,
   setToCoords,
@@ -55,6 +88,8 @@ export default function MapView({
   const selectionRef = useRef({ from: null, to: null });
   const stepRef = useRef(0); // 0 = FROM, 1 = TO
   const routeRenderVersionRef = useRef(0);
+  const ridePinStartRef = useRef(null);
+  const ridePinEndRef = useRef(null);
   const [currentCoords, setCurrentCoords] = useState(null);
 
   const safeClearSelectionMarkers = () => {
@@ -183,6 +218,8 @@ export default function MapView({
       selectionRouteLayerRef.current = null;
       currentLocationLayerRef.current = null;
       currentRouteLayerRef.current = null;
+      ridePinStartRef.current = null;
+      ridePinEndRef.current = null;
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;
@@ -200,6 +237,9 @@ export default function MapView({
 
     if (!L || !map || !markersLayer || !routeLayer || !selectionRouteLayer || !currentLocationLayer) return;
 
+    if (!ridePinStartRef.current) ridePinStartRef.current = createRidePinIcon(L, { variant: "start" });
+    if (!ridePinEndRef.current) ridePinEndRef.current = createRidePinIcon(L, { variant: "end" });
+
     const renderVersion = Date.now();
     routeRenderVersionRef.current = renderVersion;
     markersLayer.clearLayers();
@@ -215,7 +255,9 @@ export default function MapView({
       const hasTo = Array.isArray(ride.toCoords) && ride.toCoords.length === 2;
 
       if (hasFrom) {
-        const fromMarker = L.marker(ride.fromCoords).bindPopup(
+        const fromMarker = L.marker(ride.fromCoords, {
+          icon: ridePinStartRef.current,
+        }).bindPopup(
           `<strong>From:</strong> ${ride.from}<br/><strong>Driver:</strong> ${ride.driver}`
         );
         markersLayer.addLayer(fromMarker);
@@ -223,7 +265,9 @@ export default function MapView({
       }
 
       if (hasTo) {
-        const toMarker = L.marker(ride.toCoords).bindPopup(
+        const toMarker = L.marker(ride.toCoords, {
+          icon: ridePinEndRef.current,
+        }).bindPopup(
           `<strong>To:</strong> ${ride.to}<br/><strong>Seats:</strong> ${ride.seats}`
         );
         markersLayer.addLayer(toMarker);

@@ -175,3 +175,29 @@
   color: #fff;
   font-weight: 600;
 }
+
+.initErrorBox {
+  padding: 12px 4px;
+  text-align: center;
+}
+
+.initErrorText {
+  margin: 0 0 12px;
+  font-size: 14px;
+  color: #b45309;
+  line-height: 1.45;
+}
+
+.retryBtn {
+  border: none;
+  border-radius: 10px;
+  padding: 9px 18px;
+  background: #2563eb;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.retryBtn:hover {
+  background: #1d4ed8;
+}
