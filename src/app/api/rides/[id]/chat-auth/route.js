@@ -41,9 +41,12 @@ export async function GET(req, { params }) {
       );
     }
 
+    // Ably clientId allows only [a-zA-Z0-9_-] — emails contain @ and "." and break the connection.
+    const ablyClientId = authResult.userId.replace(/[^a-zA-Z0-9_-]/g, "_");
+
     const rest = new Ably.Rest(ablyApiKey);
     const tokenRequest = await rest.auth.createTokenRequest({
-      clientId: email,
+      clientId: ablyClientId,
       capability: {
         [`ride:${ride._id}`]: ["publish", "subscribe", "history", "presence"],
       },
@@ -52,7 +55,8 @@ export async function GET(req, { params }) {
     return Response.json({
       success: true,
       channelName: `ride:${ride._id}`,
-      clientId: email,
+      ablyClientId,
+      userEmail: email,
       tokenRequest,
     });
   } catch (error) {

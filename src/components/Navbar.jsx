@@ -59,6 +59,10 @@ const Navbar = () => {
           Chat
         </Link>
 
+        <Link href="/notifications" className={styles.link}>
+          Notifications
+        </Link>
+
         <Link href="/profile" className={styles.link}>
           Profile
         </Link>

@@ -152,6 +152,9 @@ const OfferRide = () => {
           <p className={styles.desc}>
             Share your ride with other university members
           </p>
+          <div className={`${styles.banner} ${styles.bannerInfo}`}>
+            Offered rides are managed in <strong>My Rides</strong> to keep this page focused on posting.
+          </div>
 
           {banner.message ? (
             <div

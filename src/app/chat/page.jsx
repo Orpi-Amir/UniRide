@@ -68,6 +68,20 @@ export default function ChatPage() {
     [rides, selectedRideId]
   );
 
+  const chatCounterpart = useMemo(() => {
+    if (!selectedRide) return "";
+    const isDriver = (selectedRide.driver || "").toLowerCase().trim() === currentEmail;
+    if (isDriver) {
+      const passengerEmails = (selectedRide.bookedUsers || []).filter(
+        (email) => (email || "").toLowerCase().trim() !== currentEmail
+      );
+      if (passengerEmails.length === 0) return "No accepted passengers yet";
+      if (passengerEmails.length === 1) return passengerEmails[0];
+      return `${passengerEmails[0]} +${passengerEmails.length - 1} more`;
+    }
+    return selectedRide.driver || "Driver";
+  }, [selectedRide, currentEmail]);
+
   return (
     <>
       <Navbar />
@@ -108,10 +122,10 @@ export default function ChatPage() {
               <>
                 <div className={styles.chatHeader}>
                   <h2 className={styles.heading} style={{ marginBottom: "4px" }}>
-                    {selectedRide.from} to {selectedRide.to}
+                    Conversation with {chatCounterpart}
                   </h2>
                   <p className={styles.muted}>
-                    Use this chat for pickup coordination and live location sharing.
+                    Ride chat for booking updates, pickup coordination, and location sharing.
                   </p>
                 </div>
                 <RideChat

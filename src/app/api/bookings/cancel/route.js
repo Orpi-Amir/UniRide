@@ -32,23 +32,21 @@ export async function POST(req) {
       });
     }
 
-    if (!(ride.bookedUsers || []).includes(authResult.email)) {
+    const me = authResult.email.toLowerCase().trim();
+    const booked = (ride.bookedUsers || []).some((e) => (e || "").toLowerCase().trim() === me);
+    if (!booked) {
       return Response.json({
         success: false,
         message: "You do not have a booking on this ride",
       });
     }
 
-    await Ride.findOneAndUpdate(
-      { _id: rideId, bookedUsers: authResult.email },
-      {
-        $pull: {
-          bookedUsers: authResult.email,
-          passengerPickups: { email: authResult.email },
-        },
-        $inc: { seats: 1 },
-      }
+    ride.bookedUsers = (ride.bookedUsers || []).filter((e) => (e || "").toLowerCase().trim() !== me);
+    ride.passengerPickups = (ride.passengerPickups || []).filter(
+      (entry) => (entry.email || "").toLowerCase().trim() !== me
     );
+    ride.seats = Math.max((ride.seats || 0) + 1, 0);
+    await ride.save();
 
     return Response.json({
       success: true,

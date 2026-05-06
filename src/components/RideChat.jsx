@@ -60,6 +60,7 @@ export default function RideChat({ rideId, currentUserEmail, onError }) {
         type: incoming.type || "message",
         coords: incoming.coords || null,
         sender: incoming.sender || "Unknown",
+        senderEmail: incoming.senderEmail || "",
         timestamp: incoming.timestamp || Date.now(),
       };
       const existingIndex = prev.findIndex((item) => item.id === normalized.id);
@@ -109,7 +110,7 @@ export default function RideChat({ rideId, currentUserEmail, onError }) {
 
         const ably = window.Ably;
         const realtime = new ably.Realtime({
-          clientId: authData.clientId,
+          clientId: authData.ablyClientId,
           authCallback: async (_, callback) => {
             try {
               if (tokenRef.current) {
@@ -145,7 +146,8 @@ export default function RideChat({ rideId, currentUserEmail, onError }) {
             text: item.data?.text || "",
             type: item.data?.type || "message",
             coords: item.data?.coords || null,
-            sender: item.clientId || item.data?.sender || "Unknown",
+            sender: item.data?.sender || item.clientId || "Unknown",
+            senderEmail: (item.data?.senderEmail || "").toLowerCase().trim(),
             timestamp: item.timestamp || Date.now(),
           }));
           setMessages([]);
@@ -159,7 +161,8 @@ export default function RideChat({ rideId, currentUserEmail, onError }) {
             text: msg.data?.text || "",
             type: msg.data?.type || "message",
             coords: msg.data?.coords || null,
-            sender: msg.clientId || msg.data?.sender || "Unknown",
+            sender: msg.data?.sender || msg.clientId || "Unknown",
+            senderEmail: (msg.data?.senderEmail || "").toLowerCase().trim(),
             timestamp: msg.timestamp || Date.now(),
           });
         });
@@ -197,6 +200,7 @@ export default function RideChat({ rideId, currentUserEmail, onError }) {
         type: "message",
         text: content,
         sender: currentUserEmail,
+        senderEmail: currentUserEmail,
       });
       setText("");
     } catch {
@@ -229,6 +233,7 @@ export default function RideChat({ rideId, currentUserEmail, onError }) {
         text: "Shared live location",
         coords,
         sender: currentUserEmail,
+        senderEmail: currentUserEmail,
       });
     } catch {
       onError?.("Unable to share your current location");
@@ -264,7 +269,7 @@ export default function RideChat({ rideId, currentUserEmail, onError }) {
           <div className={styles.empty}>No messages yet.</div>
         ) : (
           sortedMessages.map((msg) => {
-            const own = msg.sender === currentUserEmail;
+            const own = (msg.senderEmail || "").toLowerCase().trim() === currentUserEmail;
             const coords =
               Array.isArray(msg.coords) && msg.coords.length === 2 ? msg.coords : null;
             const mapsUrl = coords

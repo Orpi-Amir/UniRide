@@ -18,8 +18,11 @@ export async function GET(req, { params }) {
       return Response.json({ success: false, message: "Ride not found" }, { status: 404 });
     }
 
-    const isDriver = ride.driver === authResult.email;
-    const isPassenger = (ride.bookedUsers || []).includes(authResult.email);
+    const me = authResult.email.toLowerCase().trim();
+    const isDriver = (ride.driver || "").toLowerCase().trim() === me;
+    const isPassenger = (ride.bookedUsers || []).some(
+      (entry) => (entry || "").toLowerCase().trim() === me
+    );
     if (!isDriver && !isPassenger) {
       return Response.json(
         { success: false, message: "You are not allowed to view live tracking for this ride" },
@@ -66,7 +69,8 @@ export async function POST(req, { params }) {
     if (!ride) {
       return Response.json({ success: false, message: "Ride not found" }, { status: 404 });
     }
-    if (ride.driver !== authResult.email) {
+    const me = authResult.email.toLowerCase().trim();
+    if ((ride.driver || "").toLowerCase().trim() !== me) {
       return Response.json(
         { success: false, message: "Only the driver can publish live location" },
         { status: 403 }
@@ -74,7 +78,7 @@ export async function POST(req, { params }) {
     }
 
     await Ride.updateOne(
-      { _id: params.id, driver: authResult.email },
+      { _id: params.id, driver: ride.driver },
       {
         $set: {
           driverLiveLocation: {
