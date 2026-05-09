@@ -4,7 +4,15 @@ import User from "@/lib/models/User";
 import { getAuthorizedUniversityUser } from "@/lib/serverAuth";
 import { isRideChatParticipant, normalizeEmail } from "@/lib/rideParticipant";
 
-function toContact(user) {
+function publicContact(user) {
+  if (!user) return null;
+  return {
+    name: user.name || "User",
+    email: user.email || "",
+  };
+}
+
+function fullContact(user) {
   if (!user) return null;
   return {
     name: user.name || "User",
@@ -61,11 +69,21 @@ export async function GET(req, { params }) {
     const driver = await User.findOne({ email: ride.driver }).lean();
 
     if (!isDriver) {
-      const pickupSaved = (ride.passengerPickups || []).find(
-        (entry) => normalizeEmail(entry.email) === requesterEmail
+      const isConfirmed = (ride.bookedUsers || []).some(
+        (e) => normalizeEmail(e) === requesterEmail
       );
       const requestEntry = (ride.bookingRequests || []).find(
-        (entry) => normalizeEmail(entry.email) === requesterEmail && entry.status !== "rejected"
+        (entry) => normalizeEmail(entry.email) === requesterEmail
+      );
+      const requestStatus = (requestEntry?.status || "").toLowerCase();
+      const passengerStatus = isConfirmed
+        ? "confirmed"
+        : requestStatus === "pending"
+          ? "pending"
+          : requestStatus || "none";
+
+      const pickupSaved = (ride.passengerPickups || []).find(
+        (entry) => normalizeEmail(entry.email) === requesterEmail
       );
       const coords =
         pickupSaved?.coords?.length === 2
@@ -79,11 +97,16 @@ export async function GET(req, { params }) {
           ? { label, coords, email: requesterEmail }
           : null;
       const pickupDistanceFromDriverStartKm = haversineDistanceKm(ride.fromCoords, pickup?.coords);
+
+      // Safety: only reveal driver phone after the booking is accepted (passenger is confirmed).
+      const contactInfo = isConfirmed ? fullContact(driver) : publicContact(driver);
+
       return Response.json({
         success: true,
         contactType: "driver",
         rideId: ride._id,
-        contact: toContact(driver),
+        passengerStatus,
+        contact: contactInfo,
         pickup: pickup
           ? {
               label: pickup.label || "",
@@ -94,6 +117,7 @@ export async function GET(req, { params }) {
       });
     }
 
+    // Driver view
     const bookedSet = new Set((ride.bookedUsers || []).map((e) => normalizeEmail(e)));
     const pendingEmails = (ride.bookingRequests || [])
       .filter((r) => (r.status || "pending").toLowerCase() === "pending")
@@ -130,9 +154,16 @@ export async function GET(req, { params }) {
             : [];
       const pickupLabel = pickup?.label || req?.pickupLabel || "";
       const confirmed = bookedSet.has(emailKey);
-      const base = userDoc
-        ? toContact(userDoc)
-        : { name: emailKey.split("@")[0] || "Passenger", email: emailKey, phone: "" };
+
+      // Safety: only reveal phone for passengers the driver already accepted.
+      const base = confirmed
+        ? userDoc
+          ? fullContact(userDoc)
+          : { name: emailKey.split("@")[0] || "Passenger", email: emailKey, phone: "" }
+        : userDoc
+          ? publicContact(userDoc)
+          : { name: emailKey.split("@")[0] || "Passenger", email: emailKey };
+
       return {
         ...base,
         bookingStatus: confirmed ? "confirmed" : "pending",
@@ -151,7 +182,7 @@ export async function GET(req, { params }) {
       success: true,
       contactType: "passengers",
       rideId: ride._id,
-      contact: toContact(driver),
+      contact: fullContact(driver),
       passengers: passengersWithPickup,
     });
   } catch (error) {

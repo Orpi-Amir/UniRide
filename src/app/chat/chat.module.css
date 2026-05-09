@@ -5,11 +5,11 @@
 }
 
 .container {
-  max-width: 960px;
+  max-width: 1080px;
   margin: 0 auto;
   display: grid;
-  grid-template-columns: minmax(260px, 320px) 1fr;
-  gap: 16px;
+  grid-template-columns: minmax(280px, 340px) 1fr;
+  gap: 18px;
   align-items: start;
 }
 
@@ -17,8 +17,12 @@
   background: #fff;
   border-radius: 16px;
   border: 1px solid #e2e8f0;
-  padding: 16px;
+  padding: 18px;
   box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06);
+  position: sticky;
+  top: 90px;
+  max-height: calc(100vh - 110px);
+  overflow-y: auto;
 }
 
 .main {
@@ -27,11 +31,11 @@
   border: 1px solid #e2e8f0;
   padding: 18px 18px 20px;
   box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06);
-  min-height: 420px;
+  min-height: 480px;
 }
 
 .title {
-  font-size: 1.35rem;
+  font-size: 1.4rem;
   font-weight: 700;
   margin: 0 0 6px;
   color: #0f172a;
@@ -40,7 +44,7 @@
 .lede {
   margin: 0 0 14px;
   font-size: 13px;
-  line-height: 1.45;
+  line-height: 1.5;
   color: #64748b;
 }
 
@@ -54,23 +58,54 @@
   width: 100%;
   text-align: left;
   border: 1px solid #e2e8f0;
-  background: #fff;
+  background: #ffffff;
   border-radius: 12px;
-  padding: 12px 12px;
+  padding: 12px 14px;
   margin-bottom: 8px;
   cursor: pointer;
   transition:
     border-color 0.15s ease,
-    box-shadow 0.15s ease;
+    box-shadow 0.15s ease,
+    transform 0.05s ease;
 }
 
 .threadBtn:hover {
   border-color: #cbd5e1;
+  transform: translateY(-1px);
 }
 
 .threadBtnActive {
   border-color: #3b82f6;
+  background: linear-gradient(180deg, #eff6ff, #ffffff);
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.18);
+}
+
+.threadBadge {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.threadBadgeOk {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.threadBadgeWait {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.threadBadgeMuted {
+  background: #f1f5f9;
+  color: #475569;
 }
 
 .sectionLabel {
@@ -122,11 +157,15 @@
   margin-bottom: 14px;
   padding-bottom: 12px;
   border-bottom: 1px solid #f1f5f9;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .threadTitle {
   margin: 0;
-  font-size: 1.05rem;
+  font-size: 1.1rem;
   font-weight: 700;
   color: #0f172a;
 }
@@ -137,12 +176,34 @@
   color: #64748b;
 }
 
+.backBtn {
+  display: none;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  color: #0f172a;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.backBtn:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
 .contactCard {
   border-radius: 12px;
   border: 1px solid #e2e8f0;
   background: #f8fafc;
   padding: 12px 14px;
   margin-bottom: 14px;
+}
+
+.pendingCard {
+  background: linear-gradient(180deg, #fff7ed, #ffffff);
+  border-color: #fdba74;
 }
 
 .contactTitle {
@@ -171,8 +232,16 @@
   letter-spacing: 0.03em;
   padding: 2px 7px;
   border-radius: 999px;
+}
+
+.badgePending {
   background: #fef3c7;
   color: #b45309;
+}
+
+.badgeConfirmed {
+  background: #dcfce7;
+  color: #15803d;
 }
 
 .contactLink {
@@ -195,7 +264,7 @@
 }
 
 .contactRow {
-  padding: 8px 0;
+  padding: 10px 0;
   border-bottom: 1px solid #e2e8f0;
 }
 
@@ -203,8 +272,16 @@
   border-bottom: none;
 }
 
+.passengerLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .pickupHint {
-  margin-top: 8px;
+  margin-top: 6px;
   font-size: 12px;
   color: #475569;
 }
@@ -213,22 +290,114 @@
   color: #64748b;
   font-size: 13px;
   margin: 0;
+  line-height: 1.5;
 }
 
 .chatSection {
   margin-top: 4px;
 }
 
+.pendingSection {
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  border-radius: 10px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+}
+
+.pendingHeader {
+  font-size: 12px;
+  font-weight: 700;
+  color: #b45309;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.actionRow {
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.actionBtn {
+  border: none;
+  border-radius: 999px;
+  padding: 7px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.actionBtnPrimary {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.actionBtnPrimary:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.actionBtnGhost {
+  background: #ffffff;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}
+
+.actionBtnGhost:hover:not(:disabled) {
+  background: #fef2f2;
+}
+
+.actionBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 360px;
+  text-align: center;
+  padding: 24px;
+}
+
+.emptyTitle {
+  margin: 0 0 8px;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
 @media (max-width: 820px) {
   .container {
     grid-template-columns: 1fr;
+    gap: 0;
   }
 
   .sidebar {
-    order: 1;
+    position: static;
+    max-height: none;
+    overflow: visible;
   }
 
-  .main {
-    order: 2;
+  .containerWithThread .sidebar.sidebarHiddenMobile {
+    display: none;
+  }
+
+  .containerWithThread .main {
+    display: block;
+  }
+
+  .main.mainHiddenMobile {
+    display: none;
+  }
+
+  .backBtn {
+    display: inline-flex;
   }
 }

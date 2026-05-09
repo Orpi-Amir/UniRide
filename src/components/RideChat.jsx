@@ -11,6 +11,24 @@ function formatTime(timestamp) {
   }
 }
 
+function formatDayLabel(timestamp) {
+  try {
+    const d = new Date(timestamp);
+    const today = new Date();
+    const yesterday = new Date();
+    yesterday.setDate(today.getDate() - 1);
+    const sameDay = (a, b) =>
+      a.getFullYear() === b.getFullYear() &&
+      a.getMonth() === b.getMonth() &&
+      a.getDate() === b.getDate();
+    if (sameDay(d, today)) return "Today";
+    if (sameDay(d, yesterday)) return "Yesterday";
+    return d.toLocaleDateString([], { day: "2-digit", month: "short", year: "numeric" });
+  } catch {
+    return "";
+  }
+}
+
 function haversineDistanceKm(fromCoords, toCoords) {
   if (!Array.isArray(fromCoords) || !Array.isArray(toCoords)) return null;
   const [lat1, lng1] = fromCoords;
@@ -34,9 +52,7 @@ function formatDistance(km) {
 }
 
 function deriveSenderEmail(data) {
-  const fromPayload = (data?.senderEmail || data?.sender || "").toLowerCase().trim();
-  if (fromPayload.includes("@")) return fromPayload;
-  return fromPayload;
+  return (data?.senderEmail || data?.sender || "").toLowerCase().trim();
 }
 
 function withTimeout(promise, ms, message) {
@@ -79,9 +95,7 @@ function waitForChatConnected(realtime, timeoutMs = 22000) {
       if (state === "disconnected") {
         const reason = realtime.connection.errorReason;
         if (reason) {
-          finish(() =>
-            reject(new Error(reason.message || "Chat disconnected"))
-          );
+          finish(() => reject(new Error(reason.message || "Chat disconnected")));
           return;
         }
       }
@@ -95,21 +109,28 @@ function waitForChatConnected(realtime, timeoutMs = 22000) {
   });
 }
 
-function messagePayloadFrom(itemData) {
-  const sender = itemData?.sender || "";
+function normalizeIncoming(itemData, fallback = {}) {
+  const sender = itemData?.sender || fallback.sender || "";
   const type =
     itemData?.type ||
-    (sender === "System" ? "system" : itemData?.coords ? "location" : "message");
+    fallback.type ||
+    (sender === "System" ? "system" : itemData?.coords?.length === 2 ? "location" : "message");
+  const senderEmail = deriveSenderEmail({
+    senderEmail: itemData?.senderEmail,
+    sender: itemData?.sender,
+  });
   return {
+    id: itemData?.id || fallback.id || `${sender}-${itemData?.timestamp || Date.now()}`,
     text: itemData?.text || "",
     type,
-    coords: itemData?.coords || null,
+    coords: Array.isArray(itemData?.coords) ? itemData.coords : [],
     sender,
-    senderEmail: deriveSenderEmail(itemData),
+    senderEmail,
+    timestamp: itemData?.timestamp || fallback.timestamp || Date.now(),
   };
 }
 
-export default function RideChat({ rideId, currentUserEmail, onError }) {
+export default function RideChat({ rideId, currentUserEmail, onError, locked = false, lockedMessage = "" }) {
   const userEmail = (currentUserEmail || "").toLowerCase().trim();
   const onErrorRef = useRef(onError);
   useEffect(() => {
@@ -139,17 +160,16 @@ export default function RideChat({ rideId, currentUserEmail, onError }) {
   const upsertMessage = (incoming) => {
     if (!incoming) return;
     setMessages((prev) => {
-      const rawEmail = deriveSenderEmail({
-        senderEmail: incoming.senderEmail,
-        sender: incoming.sender,
-      });
       const normalized = {
         id: incoming.id || `${incoming.sender}-${incoming.timestamp}-${incoming.text}`,
         text: incoming.text || "",
         type: incoming.type || "message",
-        coords: incoming.coords || null,
+        coords: Array.isArray(incoming.coords) ? incoming.coords : [],
         sender: incoming.sender || "Unknown",
-        senderEmail: rawEmail,
+        senderEmail: deriveSenderEmail({
+          senderEmail: incoming.senderEmail,
+          sender: incoming.sender,
+        }),
         timestamp: incoming.timestamp || Date.now(),
       };
       const existingIndex = prev.findIndex((item) => item.id === normalized.id);
@@ -159,6 +179,44 @@ export default function RideChat({ rideId, currentUserEmail, onError }) {
       return next;
     });
   };
+
+  // Load durable history from MongoDB on mount/rideId change
+  useEffect(() => {
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) setMessages([]);
+    });
+    (async () => {
+      try {
+        const res = await fetch(`/api/rides/${rideId}/messages`, { cache: "no-store" });
+        const data = await res.json();
+        if (cancelled) return;
+        if (!data.success) {
+          if (onErrorRef.current) onErrorRef.current(data.message || "Failed to load chat history");
+          return;
+        }
+        if (Array.isArray(data.messages)) {
+          setMessages(
+            data.messages.map((m) => ({
+              id: m.id,
+              text: m.text || "",
+              type: m.type || "message",
+              coords: Array.isArray(m.coords) ? m.coords : [],
+              sender: m.sender || "Unknown",
+              senderEmail: deriveSenderEmail({ senderEmail: m.senderEmail, sender: m.sender }),
+              timestamp: m.timestamp || Date.now(),
+            }))
+          );
+        }
+      } catch {
+        if (cancelled) return;
+        if (onErrorRef.current) onErrorRef.current("Network error while loading chat history");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [rideId]);
 
   useEffect(() => {
     let mounted = true;
@@ -233,28 +291,13 @@ export default function RideChat({ rideId, currentUserEmail, onError }) {
           }
         );
 
-        channel.history({ limit: 50 }, (err, page) => {
-          if (err || !mounted) return;
-          const existingMessages = (page.items || []).map((item) => {
-            const payload = messagePayloadFrom(item.data);
-            return {
-              id: item.id,
-              ...payload,
-              timestamp: item.timestamp || Date.now(),
-            };
-          });
-          setMessages([]);
-          existingMessages.forEach(upsertMessage);
-        });
-
         messageListener = (msg) => {
           if (!mounted) return;
-          const payload = messagePayloadFrom(msg.data);
-          upsertMessage({
+          const incoming = normalizeIncoming(msg.data, {
             id: msg.id,
-            ...payload,
             timestamp: msg.timestamp || Date.now(),
           });
+          upsertMessage(incoming);
         };
         await channel.subscribe("message", messageListener);
       } catch (error) {
@@ -296,39 +339,38 @@ export default function RideChat({ rideId, currentUserEmail, onError }) {
     listRef.current.scrollTop = listRef.current.scrollHeight;
   }, [sortedMessages.length]);
 
-  const canSendMessages = channelReady && connectionOk;
-
   const send = async (e) => {
     e.preventDefault();
+    if (locked || sending) return;
     const content = text.trim();
-    if (!content || !channelReady || !connectionOk || !channelRef.current) return;
+    if (!content) return;
 
     try {
       setSending(true);
-      await channelRef.current.publish("message", {
-        type: "message",
-        text: content,
-        sender: userEmail,
-        senderEmail: userEmail,
+      const res = await fetch(`/api/rides/${rideId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: content, type: "message" }),
       });
+      const data = await res.json();
+      if (!data.success) {
+        onErrorRef.current?.(data.message || "Failed to send message");
+        return;
+      }
+      // Optimistic insert in case Ably echo is slow / disconnected.
+      if (data.message) upsertMessage(data.message);
       setText("");
-    } catch (err) {
-      onError?.(err?.message || "Failed to send message");
+    } catch {
+      onErrorRef.current?.("Network error while sending message");
     } finally {
       setSending(false);
     }
   };
 
   const shareLocation = async () => {
-    if (
-      !channelRef.current ||
-      sharingLocation ||
-      !channelReady ||
-      !connectionOk
-    )
-      return;
+    if (locked || sharingLocation) return;
     if (!navigator?.geolocation) {
-      onError?.("Geolocation is not supported in this browser");
+      onErrorRef.current?.("Geolocation is not supported in this browser");
       return;
     }
 
@@ -343,15 +385,19 @@ export default function RideChat({ rideId, currentUserEmail, onError }) {
       });
       const coords = [position.coords.latitude, position.coords.longitude];
       setCurrentCoords(coords);
-      await channelRef.current.publish("message", {
-        type: "location",
-        text: "Shared location",
-        coords,
-        sender: userEmail,
-        senderEmail: userEmail,
+      const res = await fetch(`/api/rides/${rideId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "location", coords, text: "Shared location" }),
       });
+      const data = await res.json();
+      if (!data.success) {
+        onErrorRef.current?.(data.message || "Could not share your location");
+        return;
+      }
+      if (data.message) upsertMessage(data.message);
     } catch {
-      onError?.("Unable to share your current location");
+      onErrorRef.current?.("Unable to share your current location");
     } finally {
       setSharingLocation(false);
     }
@@ -380,6 +426,8 @@ export default function RideChat({ rideId, currentUserEmail, onError }) {
 
   const connectionLabel = connectionOk ? "Online" : channelReady ? "Reconnecting" : "Offline";
 
+  let lastDay = "";
+
   return (
     <div className={styles.chatShell}>
       <div className={styles.toolbar}>
@@ -393,32 +441,43 @@ export default function RideChat({ rideId, currentUserEmail, onError }) {
         <button
           type="button"
           onClick={shareLocation}
-          disabled={sharingLocation || !canSendMessages}
+          disabled={sharingLocation || locked}
           className={styles.actionBtn}
+          title={locked ? lockedMessage : "Share your current location"}
         >
-          {sharingLocation ? "…" : "Share location"}
+          {sharingLocation ? "Sharing…" : "Share location"}
         </button>
       </div>
       <div ref={listRef} className={styles.messages}>
         {sortedMessages.length === 0 ? (
-          <div className={styles.empty}>No messages yet — say hello or confirm pickup details.</div>
+          <div className={styles.empty}>
+            No messages yet — say hello or confirm pickup details.
+          </div>
         ) : (
           sortedMessages.map((msg) => {
+            const dayLabel = formatDayLabel(msg.timestamp);
+            const showDayDivider = dayLabel && dayLabel !== lastDay;
+            if (showDayDivider) lastDay = dayLabel;
+
             if (msg.type === "system") {
               return (
-                <div key={msg.id} className={styles.rowSystem}>
-                  <div className={styles.systemBubble}>
-                    <div className={styles.systemText}>{msg.text}</div>
-                    <div className={styles.meta}>{formatTime(msg.timestamp)}</div>
+                <div key={msg.id}>
+                  {showDayDivider ? (
+                    <div className={styles.dayDivider}>{dayLabel}</div>
+                  ) : null}
+                  <div className={styles.rowSystem}>
+                    <div className={styles.systemBubble}>
+                      <div className={styles.systemText}>{msg.text}</div>
+                      <div className={styles.meta}>{formatTime(msg.timestamp)}</div>
+                    </div>
                   </div>
                 </div>
               );
             }
 
             const own =
-              msg.type !== "system" &&
-              ((msg.senderEmail || "").toLowerCase().trim() === userEmail ||
-                (!msg.senderEmail?.includes("@") && msg.sender === userEmail));
+              (msg.senderEmail || "").toLowerCase().trim() === userEmail ||
+              (!msg.senderEmail?.includes("@") && msg.sender === userEmail);
             const coords =
               Array.isArray(msg.coords) && msg.coords.length === 2 ? msg.coords : null;
             const mapsUrl = coords ? `https://www.google.com/maps?q=${coords[0]},${coords[1]}` : "";
@@ -429,28 +488,33 @@ export default function RideChat({ rideId, currentUserEmail, onError }) {
                   : `${msg.sender} shared a location`
                 : own
                   ? "You"
-                  : msg.senderEmail?.includes("@")
-                    ? msg.senderEmail
-                    : msg.sender;
+                  : msg.sender || msg.senderEmail;
 
             return (
-              <div key={msg.id} className={`${styles.row} ${own ? styles.rowOwn : ""}`}>
-                <div className={`${styles.bubble} ${own ? styles.bubbleOwn : styles.bubbleOther}`}>
-                  <div className={styles.sender}>{label}</div>
-                  {msg.type === "message" ? <div className={styles.text}>{msg.text}</div> : null}
-                  {msg.type === "location" && coords ? (
-                    <div className={styles.locationMeta}>
-                      Lat: {Number(coords[0]).toFixed(5)}, Lng: {Number(coords[1]).toFixed(5)}
-                      {!own && currentCoords
-                        ? ` • ${formatDistance(haversineDistanceKm(currentCoords, coords))}`
-                        : ""}
-                      <br />
-                      <a className={styles.mapLink} href={mapsUrl} target="_blank" rel="noreferrer">
-                        Open in Maps
-                      </a>
-                    </div>
-                  ) : null}
-                  <div className={styles.meta}>{formatTime(msg.timestamp)}</div>
+              <div key={msg.id}>
+                {showDayDivider ? (
+                  <div className={styles.dayDivider}>{dayLabel}</div>
+                ) : null}
+                <div className={`${styles.row} ${own ? styles.rowOwn : ""}`}>
+                  <div className={`${styles.bubble} ${own ? styles.bubbleOwn : styles.bubbleOther}`}>
+                    <div className={styles.sender}>{label}</div>
+                    {msg.type === "message" ? (
+                      <div className={styles.text}>{msg.text}</div>
+                    ) : null}
+                    {msg.type === "location" && coords ? (
+                      <div className={styles.locationMeta}>
+                        Lat: {Number(coords[0]).toFixed(5)}, Lng: {Number(coords[1]).toFixed(5)}
+                        {!own && currentCoords
+                          ? ` • ${formatDistance(haversineDistanceKm(currentCoords, coords))}`
+                          : ""}
+                        <br />
+                        <a className={styles.mapLink} href={mapsUrl} target="_blank" rel="noreferrer">
+                          Open in Maps
+                        </a>
+                      </div>
+                    ) : null}
+                    <div className={styles.meta}>{formatTime(msg.timestamp)}</div>
+                  </div>
                 </div>
               </div>
             );
@@ -463,21 +527,23 @@ export default function RideChat({ rideId, currentUserEmail, onError }) {
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder={
-            !channelReady
-              ? "Opening chat…"
-              : !connectionOk
-                ? "Waiting to reconnect…"
-                : "Write a message…"
+            locked
+              ? lockedMessage || "Chat will open once the booking is accepted."
+              : !channelReady
+                ? "Opening chat…"
+                : !connectionOk
+                  ? "Reconnecting… you can still send"
+                  : "Write a message…"
           }
           className={styles.input}
-          disabled={!canSendMessages}
+          disabled={locked}
         />
         <button
           type="submit"
-          disabled={sending || !text.trim() || !canSendMessages}
+          disabled={sending || !text.trim() || locked}
           className={styles.sendBtn}
         >
-          Send
+          {sending ? "Sending…" : "Send"}
         </button>
       </form>
     </div>

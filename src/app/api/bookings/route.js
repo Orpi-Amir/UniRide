@@ -2,8 +2,7 @@ import connectDB from "@/lib/mongodb";
 import Ride from "@/lib/models/Ride";
 import User from "@/lib/models/User";
 import { getAuthorizedUniversityUser } from "@/lib/serverAuth";
-import Ably from "ably";
-import { parseAblyRootKey } from "@/lib/ablyRootKey";
+import { publishSystemMessage } from "@/lib/rideMessages";
 
 // BOOK A RIDE
 export async function POST(req) {
@@ -56,7 +55,9 @@ export async function POST(req) {
     }
 
     const alreadyRequested = (ride.bookingRequests || []).some(
-      (request) => (request.email || "").toLowerCase().trim() === authResult.email
+      (request) =>
+        (request.email || "").toLowerCase().trim() === authResult.email &&
+        (request.status || "pending").toLowerCase() !== "rejected"
     );
     const alreadyBooked = (ride.bookedUsers || []).some(
       (email) => (email || "").toLowerCase().trim() === authResult.email
@@ -68,7 +69,7 @@ export async function POST(req) {
       });
     }
 
-    const passenger = await User.findOne({ email: authResult.email }).select("phone").lean();
+    const passenger = await User.findOne({ email: authResult.email }).select("phone name").lean();
     const driver = await User.findOne({ email: ride.driver }).select("phone").lean();
     if (!passenger?.phone?.trim()) {
       return Response.json({
@@ -83,11 +84,27 @@ export async function POST(req) {
       });
     }
 
+    // If a previous request was rejected, replace it with a new pending one.
     const updatedRide = await Ride.findOneAndUpdate(
       {
         _id: rideId,
         driver: { $ne: authResult.email },
       },
+      {
+        $pull: {
+          bookingRequests: { email: authResult.email },
+        },
+      }
+    );
+    if (!updatedRide) {
+      return Response.json({
+        success: false,
+        message: "Booking request unavailable",
+      });
+    }
+
+    const ridePushed = await Ride.findOneAndUpdate(
+      { _id: rideId },
       {
         $push: {
           bookingRequests: {
@@ -101,26 +118,18 @@ export async function POST(req) {
       },
       { new: true }
     );
-
-    if (!updatedRide) {
+    if (!ridePushed) {
       return Response.json({
         success: false,
         message: "Booking request unavailable",
       });
     }
 
-    try {
-      const ablyParsed = parseAblyRootKey(process.env.ABLY_API_KEY);
-      if (ablyParsed.ok) {
-        const ably = new Ably.Rest(ablyParsed.key);
-        await ably.channels.get(`ride:${String(ride._id)}`).publish("message", {
-          type: "system",
-          text: `${authResult.email} requested to join this ride. Driver can accept in My Rides.`,
-          sender: "System",
-          senderEmail: "system",
-        });
-      }
-    } catch {}
+    const requesterName = passenger?.name || authResult.email;
+    await publishSystemMessage(
+      String(ride._id),
+      `${requesterName} requested to join this ride. Driver can accept or decline from My Rides or this chat.`
+    );
 
     return Response.json({
       success: true,

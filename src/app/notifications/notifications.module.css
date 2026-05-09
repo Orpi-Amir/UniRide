@@ -8,16 +8,17 @@
   max-width: 720px;
   margin: 0 auto;
   background: #fff;
-  border-radius: 14px;
+  border-radius: 16px;
   border: 1px solid #e5e7eb;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.06);
-  padding: 20px;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.08);
+  padding: 22px;
 }
 
 .title {
-  font-size: 1.35rem;
+  font-size: 1.4rem;
   font-weight: 700;
   margin: 0 0 8px;
+  color: #0f172a;
 }
 
 .desc {
@@ -48,33 +49,123 @@
 
 .card {
   border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  padding: 12px 14px;
-  background: #fafafa;
+  border-radius: 14px;
+  padding: 14px 16px;
+  background: #ffffff;
+  border-left-width: 5px;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+}
+
+.cardWarn {
+  border-left-color: #f59e0b;
+  background: linear-gradient(90deg, #fff7ed, #ffffff 60%);
+}
+
+.cardOk {
+  border-left-color: #16a34a;
+  background: linear-gradient(90deg, #ecfdf5, #ffffff 60%);
+}
+
+.cardInfo {
+  border-left-color: #6366f1;
+  background: linear-gradient(90deg, #eef2ff, #ffffff 60%);
+}
+
+.cardHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.tag {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.cardWarn .tag {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.cardOk .tag {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.cardInfo .tag {
+  background: #e0e7ff;
+  color: #4338ca;
 }
 
 .cardTitle {
   font-weight: 700;
   font-size: 14px;
   color: #0f172a;
-  margin-bottom: 6px;
 }
 
 .cardBody {
   font-size: 13px;
   color: #334155;
-  line-height: 1.45;
+  line-height: 1.5;
 }
 
 .cardActions {
-  margin-top: 10px;
+  margin-top: 12px;
   display: flex;
-  gap: 14px;
+  gap: 10px;
   flex-wrap: wrap;
+  align-items: center;
+}
+
+.btn {
+  border: none;
+  border-radius: 999px;
+  padding: 7px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.btnPrimary {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.btnPrimary:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.btnGhost {
+  background: #ffffff;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}
+
+.btnGhost:hover:not(:disabled) {
+  background: #fef2f2;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .link {
   font-size: 13px;
   font-weight: 600;
   color: #ea580c;
+  text-decoration: none;
+}
+
+.link:hover {
+  text-decoration: underline;
 }

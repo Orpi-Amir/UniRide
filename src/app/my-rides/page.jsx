@@ -33,6 +33,7 @@ export default function MyRides() {
   const [contactsByRide, setContactsByRide] = useState({});
   const [liveByRide, setLiveByRide] = useState({});
   const [publishingRideId, setPublishingRideId] = useState("");
+  const [pendingActionKey, setPendingActionKey] = useState("");
   const watchRef = useRef({ rideId: "", watchId: null });
   const bookingCountRef = useRef({});
   const bootstrappedBookingCountsRef = useRef(false);
@@ -89,7 +90,9 @@ export default function MyRides() {
       const currentBookingCounts = {};
       myOffered.forEach((ride) => {
         const rideId = ride._id || ride.id;
-        currentBookingCounts[rideId] = Array.isArray(ride.bookedUsers) ? ride.bookedUsers.length : 0;
+        currentBookingCounts[rideId] = Array.isArray(ride.bookedUsers)
+          ? ride.bookedUsers.length
+          : 0;
       });
 
       if (bootstrappedBookingCountsRef.current) {
@@ -98,7 +101,7 @@ export default function MyRides() {
           const previous = bookingCountRef.current[rideId] ?? 0;
           const next = currentBookingCounts[rideId] ?? 0;
           if (next > previous) {
-            showSuccess(`New booking received for ride: ${ride.from} to ${ride.to}`);
+            showSuccess(`New booking confirmed for ride: ${ride.from} → ${ride.to}`);
           }
         });
       } else {
@@ -128,46 +131,33 @@ export default function MyRides() {
     return () => clearInterval(interval);
   }, [isLoaded, user, loadRides]);
 
-  // 🚗 DELETE RIDE
   const deleteRide = async (id) => {
     if (!window.confirm("Delete this ride? This cannot be undone.")) return;
 
     try {
-      const res = await fetch(`/api/rides/${id}`, {
-        method: "DELETE",
-      });
-
+      const res = await fetch(`/api/rides/${id}`, { method: "DELETE" });
       const data = await res.json();
-
       if (data.success) {
         showSuccess("Ride deleted.");
         loadRides();
       } else {
-        const msg = data.message || "Failed to delete ride";
-        showError(msg);
+        showError(data.message || "Failed to delete ride");
       }
     } catch {
       showError("Network error while deleting the ride.");
     }
   };
 
-  // 🚨 CANCEL BOOKING (NEW)
   const cancelBooking = async (rideId) => {
     if (!window.confirm("Cancel your booking for this ride?")) return;
 
     try {
       const res = await fetch("/api/bookings/cancel", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          rideId,
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rideId }),
       });
-
       const data = await res.json();
-
       if (data.success) {
         showSuccess("Booking cancelled.");
         setLiveByRide((prev) => {
@@ -177,8 +167,7 @@ export default function MyRides() {
         });
         loadRides();
       } else {
-        const msg = data.message || "Failed to cancel booking";
-        showError(msg);
+        showError(data.message || "Failed to cancel booking");
       }
     } catch {
       showError("Network error while cancelling the booking.");
@@ -186,7 +175,9 @@ export default function MyRides() {
   };
 
   const acceptBooking = async (rideId, passengerEmail) => {
+    const key = `${rideId}:${passengerEmail}`;
     try {
+      setPendingActionKey(key);
       const res = await fetch("/api/bookings/accept", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -198,9 +189,35 @@ export default function MyRides() {
         return;
       }
       showSuccess("Booking accepted. Passenger can now chat with you.");
-      loadRides();
+      await Promise.all([loadRides(), loadContacts(rideId)]);
     } catch {
       showError("Network error while accepting booking.");
+    } finally {
+      setPendingActionKey("");
+    }
+  };
+
+  const declineBooking = async (rideId, passengerEmail) => {
+    if (!window.confirm("Decline this booking request?")) return;
+    const key = `${rideId}:${passengerEmail}`;
+    try {
+      setPendingActionKey(key);
+      const res = await fetch("/api/bookings/decline", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rideId, passengerEmail }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        showError(data.message || "Failed to decline booking");
+        return;
+      }
+      showSuccess("Booking request declined.");
+      await Promise.all([loadRides(), loadContacts(rideId)]);
+    } catch {
+      showError("Network error while declining booking.");
+    } finally {
+      setPendingActionKey("");
     }
   };
 
@@ -220,7 +237,9 @@ export default function MyRides() {
 
   const publishLiveLocation = useCallback(async (rideId, coords) => {
     const hasValidCoords =
-      Array.isArray(coords) && coords.length === 2 && coords.every((value) => typeof value === "number");
+      Array.isArray(coords) &&
+      coords.length === 2 &&
+      coords.every((value) => typeof value === "number");
     if (!hasValidCoords) return;
     try {
       await fetch(`/api/rides/${rideId}/live-location`, {
@@ -241,6 +260,7 @@ export default function MyRides() {
       watchRef.current = { rideId: "", watchId: null };
     }
     setPublishingRideId(rideId);
+    showSuccess("Live tracking started — passengers can now see your location.");
     const watchId = navigator.geolocation.watchPosition(
       (position) => {
         const coords = [position.coords.latitude, position.coords.longitude];
@@ -269,6 +289,7 @@ export default function MyRides() {
     }
     watchRef.current = { rideId: "", watchId: null };
     setPublishingRideId("");
+    showSuccess("Live tracking stopped.");
   };
 
   const fetchPassengerLiveLocation = useCallback(async (rideId) => {
@@ -297,7 +318,7 @@ export default function MyRides() {
     joinedRides.forEach((ride) => fetchPassengerLiveLocation(ride._id || ride.id));
     const interval = setInterval(() => {
       joinedRides.forEach((ride) => fetchPassengerLiveLocation(ride._id || ride.id));
-    }, 15000);
+    }, 12000);
     return () => clearInterval(interval);
   }, [joinedRides, fetchPassengerLiveLocation]);
 
@@ -325,192 +346,285 @@ export default function MyRides() {
 
           {loading ? <p className={styles.empty}>Loading your rides…</p> : null}
 
-          {/* ================= OFFERED RIDES ================= */}
           <div className={styles.section}>
-            <h2 className={styles.sectionTitle}>
-              Rides I Offered
-            </h2>
+            <h2 className={styles.sectionTitle}>Rides I Offered</h2>
 
             {offeredRides.length > 0 ? (
-              offeredRides.map((ride) => (
-                <div key={ride._id || ride.id} className={styles.card}>
-                  <p><b>From:</b> {ride.from}</p>
-                  <p><b>To:</b> {ride.to}</p>
-                  <p><b>Date:</b> {ride.date}</p>
-                  <p><b>Time:</b> {ride.time}</p>
-                  <p><b>Seats:</b> {ride.seats}</p>
-                  <p><b>Price:</b> {ride.price}</p>
-                  <p><b>Bookings:</b> {(ride.bookedUsers || []).length}</p>
+              offeredRides.map((ride) => {
+                const rideId = ride._id || ride.id;
+                const pendingRequests = (ride.bookingRequests || []).filter(
+                  (request) => (request.status || "pending").toLowerCase() === "pending"
+                );
+                const isTracking = publishingRideId === rideId;
+                return (
+                  <div key={rideId} className={styles.card}>
+                    <p>
+                      <b>From:</b> {ride.from}
+                    </p>
+                    <p>
+                      <b>To:</b> {ride.to}
+                    </p>
+                    <p>
+                      <b>Date:</b> {ride.date}
+                    </p>
+                    <p>
+                      <b>Time:</b> {ride.time}
+                    </p>
+                    <p>
+                      <b>Seats:</b> {ride.seats}
+                    </p>
+                    <p>
+                      <b>Price:</b> {ride.price}
+                    </p>
+                    <p>
+                      <b>Confirmed bookings:</b> {(ride.bookedUsers || []).length}
+                    </p>
+                    {pendingRequests.length > 0 ? (
+                      <p>
+                        <b>Pending requests:</b> {pendingRequests.length}
+                      </p>
+                    ) : null}
 
-                  <div className={styles.rowActions}>
-                    <button
-                      type="button"
-                      className={`${styles.btn} ${styles.btnDanger}`}
-                      onClick={() => deleteRide(ride._id || ride.id)}
-                      disabled={loading}
-                    >
-                      Delete Ride
-                    </button>
-                    <button
-                      type="button"
-                      className={`${styles.btn} ${styles.btnWarn}`}
-                      onClick={() => startDriverTracking(ride._id || ride.id)}
-                    >
-                      {publishingRideId === (ride._id || ride.id) ? "Live Tracking On" : "Start Live Tracking"}
-                    </button>
-                    <button
-                      type="button"
-                      className={`${styles.btn} ${styles.btnDanger}`}
-                      onClick={stopDriverTracking}
-                      disabled={publishingRideId !== (ride._id || ride.id)}
-                    >
-                      Stop Tracking
-                    </button>
-                    <button
-                      type="button"
-                      className={`${styles.btn} ${styles.btnWarn}`}
-                      onClick={() => loadContacts(ride._id || ride.id)}
-                    >
-                      Passenger Contacts
-                    </button>
-                  </div>
-                  {contactsByRide[ride._id || ride.id]?.passengers?.length ? (
-                    <div className={styles.banner} style={{ marginTop: "10px" }}>
-                      <strong>Passengers</strong>
-                      {contactsByRide[ride._id || ride.id].passengers.map((p) => (
-                        <div key={p.email}>
-                          {p.name} - {p.email} - {p.phone || "No phone"}
-                          {p.pickupLabel ? ` - Pickup: ${p.pickupLabel}` : ""}
-                          {typeof p.distanceFromDriverStartKm === "number"
-                            ? ` (${p.distanceFromDriverStartKm.toFixed(1)} km from your start)`
-                            : ""}
-                        </div>
-                      ))}
+                    <div className={styles.rowActions}>
+                      <button
+                        type="button"
+                        className={`${styles.btn} ${styles.btnDanger}`}
+                        onClick={() => deleteRide(rideId)}
+                        disabled={loading}
+                      >
+                        Delete Ride
+                      </button>
+                      <button
+                        type="button"
+                        className={`${styles.btn} ${isTracking ? styles.btnOk : styles.btnWarn}`}
+                        onClick={() => startDriverTracking(rideId)}
+                      >
+                        {isTracking ? "Tracking is ON" : "Start Live Tracking"}
+                      </button>
+                      <button
+                        type="button"
+                        className={`${styles.btn} ${styles.btnDanger}`}
+                        onClick={stopDriverTracking}
+                        disabled={!isTracking}
+                      >
+                        Stop Tracking
+                      </button>
+                      <button
+                        type="button"
+                        className={`${styles.btn} ${styles.btnWarn}`}
+                        onClick={() => loadContacts(rideId)}
+                      >
+                        Passenger Contacts
+                      </button>
                     </div>
-                  ) : null}
-                  {(ride.bookingRequests || []).some((request) => request.status === "pending") ? (
-                    <div className={styles.banner} style={{ marginTop: "10px" }}>
-                      <strong>Pending Booking Requests</strong>
-                      {(ride.bookingRequests || [])
-                        .filter((request) => request.status === "pending")
-                        .map((request) => (
-                          <div key={`${ride._id || ride.id}-${request.email}`} style={{ marginTop: "8px" }}>
-                            <div>{request.email}</div>
-                            {request.pickupLabel ? <div>Pickup: {request.pickupLabel}</div> : null}
-                            <button
-                              type="button"
-                              className={`${styles.btn} ${styles.btnWarn}`}
-                              onClick={() => acceptBooking(ride._id || ride.id, request.email)}
-                            >
-                              Accept Booking
-                            </button>
+
+                    {isTracking ? (
+                      <div className={`${styles.banner} ${styles.bannerInfo}`}>
+                        Live tracking is on. Passengers can see your latest position.
+                      </div>
+                    ) : null}
+
+                    {contactsByRide[rideId]?.passengers?.length ? (
+                      <div className={styles.banner} style={{ marginTop: "10px" }}>
+                        <strong>Passengers</strong>
+                        {contactsByRide[rideId].passengers.map((p) => (
+                          <div key={p.email} style={{ marginTop: "6px" }}>
+                            <div>
+                              {p.name || p.email}{" "}
+                              {p.bookingStatus === "pending" ? (
+                                <span className={styles.tagPending}>Pending</span>
+                              ) : (
+                                <span className={styles.tagConfirmed}>Confirmed</span>
+                              )}
+                            </div>
+                            <div className={styles.muted}>{p.email}</div>
+                            <div>
+                              {p.bookingStatus === "confirmed"
+                                ? p.phone || "No phone"
+                                : "Phone hidden until you accept"}
+                            </div>
+                            {p.pickupLabel ? <div>Pickup: {p.pickupLabel}</div> : null}
+                            {typeof p.distanceFromDriverStartKm === "number" ? (
+                              <div className={styles.muted}>
+                                {p.distanceFromDriverStartKm.toFixed(1)} km from your start
+                              </div>
+                            ) : null}
                           </div>
                         ))}
-                    </div>
-                  ) : null}
-                </div>
-              ))
+                      </div>
+                    ) : null}
+
+                    {pendingRequests.length > 0 ? (
+                      <div className={`${styles.banner} ${styles.bannerWarn}`} style={{ marginTop: "10px" }}>
+                        <strong>Pending Booking Requests</strong>
+                        {pendingRequests.map((request) => {
+                          const key = `${rideId}:${request.email}`;
+                          return (
+                            <div key={key} style={{ marginTop: "10px" }}>
+                              <div>
+                                <strong>{request.email}</strong>
+                              </div>
+                              {request.pickupLabel ? (
+                                <div>Pickup: {request.pickupLabel}</div>
+                              ) : (
+                                <div className={styles.muted}>No pickup location provided.</div>
+                              )}
+                              {Array.isArray(request.pickupCoords) &&
+                              request.pickupCoords.length === 2 &&
+                              Array.isArray(ride.fromCoords) &&
+                              ride.fromCoords.length === 2 ? (
+                                <div className={styles.muted}>
+                                  {haversineDistanceKm(
+                                    ride.fromCoords,
+                                    request.pickupCoords
+                                  )?.toFixed(1)}{" "}
+                                  km from your start
+                                </div>
+                              ) : null}
+                              <div className={styles.rowActions} style={{ marginTop: "8px" }}>
+                                <button
+                                  type="button"
+                                  className={`${styles.btn} ${styles.btnPrimary}`}
+                                  onClick={() => acceptBooking(rideId, request.email)}
+                                  disabled={pendingActionKey === key}
+                                >
+                                  {pendingActionKey === key ? "Accepting…" : "Accept Booking"}
+                                </button>
+                                <button
+                                  type="button"
+                                  className={`${styles.btn} ${styles.btnGhost}`}
+                                  onClick={() => declineBooking(rideId, request.email)}
+                                  disabled={pendingActionKey === key}
+                                >
+                                  Decline
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })
             ) : (
               <div className={styles.card}>
-                <p className={styles.empty}>
-                  You haven’t offered any rides yet
-                </p>
+                <p className={styles.empty}>You haven’t offered any rides yet</p>
               </div>
             )}
           </div>
 
-          {/* ================= JOINED RIDES ================= */}
           <div className={styles.section}>
-            <h2 className={styles.sectionTitle}>
-              Rides I Joined
-            </h2>
+            <h2 className={styles.sectionTitle}>Rides I Joined</h2>
 
             {joinedRides.length > 0 ? (
-              joinedRides.map((ride) => (
-                <div key={ride._id || ride.id} className={styles.card}>
-                  <p><b>From:</b> {ride.from}</p>
-                  <p><b>To:</b> {ride.to}</p>
-                  <p><b>Date:</b> {ride.date}</p>
-                  <p><b>Time:</b> {ride.time}</p>
-                  <p><b>Price:</b> {ride.price}</p>
+              joinedRides.map((ride) => {
+                const rideId = ride._id || ride.id;
+                const live = liveByRide[rideId];
+                const passengerPickup = contactsByRide[rideId]?.pickup?.coords;
+                const driverCoords = live?.coords;
+                const km =
+                  Array.isArray(driverCoords) &&
+                  driverCoords.length === 2 &&
+                  Array.isArray(passengerPickup) &&
+                  passengerPickup.length === 2
+                    ? haversineDistanceKm(driverCoords, passengerPickup)
+                    : null;
+                const estimatedMinutes =
+                  typeof km === "number" ? Math.max(1, Math.round((km / 35) * 60)) : null;
+                return (
+                  <div key={rideId} className={styles.card}>
+                    <p>
+                      <b>From:</b> {ride.from}
+                    </p>
+                    <p>
+                      <b>To:</b> {ride.to}
+                    </p>
+                    <p>
+                      <b>Date:</b> {ride.date}
+                    </p>
+                    <p>
+                      <b>Time:</b> {ride.time}
+                    </p>
+                    <p>
+                      <b>Price:</b> {ride.price}
+                    </p>
 
-                  <div className={styles.rowActions}>
-                    <button
-                      type="button"
-                      className={`${styles.btn} ${styles.btnWarn}`}
-                      onClick={() => cancelBooking(ride._id || ride.id)}
-                      disabled={loading}
-                    >
-                      Cancel Booking
-                    </button>
-                    <button
-                      type="button"
-                      className={`${styles.btn} ${styles.btnWarn}`}
-                      onClick={() => loadContacts(ride._id || ride.id)}
-                    >
-                      Driver Contact
-                    </button>
-                  </div>
-                  {Array.isArray(liveByRide[ride._id || ride.id]?.coords) &&
-                  liveByRide[ride._id || ride.id].coords.length === 2 ? (
-                    <div className={styles.banner} style={{ marginTop: "10px" }}>
-                      <strong>Driver live location</strong>
-                      {(() => {
-                        const passengerPickup = contactsByRide[ride._id || ride.id]?.pickup?.coords;
-                        const driverCoords = liveByRide[ride._id || ride.id].coords;
-                        const km = haversineDistanceKm(driverCoords, passengerPickup);
-                        const estimatedMinutes = typeof km === "number" ? Math.max(1, Math.round((km / 35) * 60)) : null;
-                        return typeof km === "number" ? (
+                    <div className={styles.rowActions}>
+                      <button
+                        type="button"
+                        className={`${styles.btn} ${styles.btnWarn}`}
+                        onClick={() => cancelBooking(rideId)}
+                        disabled={loading}
+                      >
+                        Cancel Booking
+                      </button>
+                      <button
+                        type="button"
+                        className={`${styles.btn} ${styles.btnWarn}`}
+                        onClick={() => loadContacts(rideId)}
+                      >
+                        Driver Contact
+                      </button>
+                    </div>
+
+                    {Array.isArray(driverCoords) && driverCoords.length === 2 ? (
+                      <div className={`${styles.banner} ${styles.bannerInfo}`} style={{ marginTop: "10px" }}>
+                        <strong>Driver live location</strong>
+                        {typeof km === "number" ? (
                           <div>
-                            Driver is about {km.toFixed(1)} km away from your pickup
-                            {estimatedMinutes ? ` (~${estimatedMinutes} min)` : ""}.
+                            About {km.toFixed(1)} km from your pickup
+                            {estimatedMinutes ? ` (~${estimatedMinutes} min)` : ""}
                           </div>
-                        ) : null;
-                      })()}
-                      <div>
-                        Lat: {Number(liveByRide[ride._id || ride.id].coords[0]).toFixed(5)}, Lng:{" "}
-                        {Number(liveByRide[ride._id || ride.id].coords[1]).toFixed(5)}
-                      </div>
-                      <div>
-                        Updated:{" "}
-                        {liveByRide[ride._id || ride.id].updatedAt
-                          ? new Date(liveByRide[ride._id || ride.id].updatedAt).toLocaleTimeString()
-                          : "Unknown"}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className={styles.banner} style={{ marginTop: "10px" }}>
-                      Driver live location is not active yet.
-                    </div>
-                  )}
-                  {contactsByRide[ride._id || ride.id]?.contact ? (
-                    <div className={styles.banner} style={{ marginTop: "10px" }}>
-                      <strong>Driver</strong>
-                      <div>{contactsByRide[ride._id || ride.id].contact.name}</div>
-                      <div>{contactsByRide[ride._id || ride.id].contact.email}</div>
-                      <div>{contactsByRide[ride._id || ride.id].contact.phone || "No phone"}</div>
-                      {contactsByRide[ride._id || ride.id].pickup?.label ? (
-                        <div>
-                          Your pickup: {contactsByRide[ride._id || ride.id].pickup.label}
-                          {typeof contactsByRide[ride._id || ride.id].pickup
-                            .distanceFromDriverStartKm === "number"
-                            ? ` (${contactsByRide[ride._id || ride.id].pickup.distanceFromDriverStartKm.toFixed(1)} km from driver start)`
-                            : ""}
+                        ) : null}
+                        <div className={styles.muted}>
+                          Lat: {Number(driverCoords[0]).toFixed(5)}, Lng:{" "}
+                          {Number(driverCoords[1]).toFixed(5)}
                         </div>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </div>
-              ))
+                        <div className={styles.muted}>
+                          Updated:{" "}
+                          {live?.updatedAt
+                            ? new Date(live.updatedAt).toLocaleTimeString()
+                            : "Unknown"}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className={styles.banner} style={{ marginTop: "10px" }}>
+                        Driver hasn’t turned on live tracking yet.
+                      </div>
+                    )}
+
+                    {contactsByRide[rideId]?.contact ? (
+                      <div className={styles.banner} style={{ marginTop: "10px" }}>
+                        <strong>Driver</strong>
+                        <div>{contactsByRide[rideId].contact.name}</div>
+                        <div>{contactsByRide[rideId].contact.email}</div>
+                        <div>
+                          {contactsByRide[rideId].contact.phone ||
+                            "Phone hidden until your booking is accepted"}
+                        </div>
+                        {contactsByRide[rideId].pickup?.label ? (
+                          <div>
+                            Your pickup: {contactsByRide[rideId].pickup.label}
+                            {typeof contactsByRide[rideId].pickup.distanceFromDriverStartKm ===
+                            "number"
+                              ? ` (${contactsByRide[
+                                  rideId
+                                ].pickup.distanceFromDriverStartKm.toFixed(1)} km from driver start)`
+                              : ""}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })
             ) : (
               <div className={styles.card}>
-                <p className={styles.empty}>
-                  You haven’t joined any rides yet
-                </p>
+                <p className={styles.empty}>You haven’t joined any rides yet</p>
               </div>
             )}
           </div>
-
         </div>
       </div>
     </>

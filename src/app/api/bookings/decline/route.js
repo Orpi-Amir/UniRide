@@ -25,43 +25,36 @@ export async function POST(req) {
       return Response.json({ success: false, message: "Ride not found" }, { status: 404 });
     }
     if ((ride.driver || "").toLowerCase().trim() !== authResult.email) {
-      return Response.json({ success: false, message: "Only driver can accept bookings" }, { status: 403 });
-    }
-    if (ride.seats <= 0) {
-      return Response.json({ success: false, message: "No seats left to accept this request" }, { status: 400 });
+      return Response.json(
+        { success: false, message: "Only driver can decline bookings" },
+        { status: 403 }
+      );
     }
 
     const email = passengerEmail.toLowerCase().trim();
-    const request = (ride.bookingRequests || []).find((entry) => (entry.email || "").toLowerCase().trim() === email);
+    const request = (ride.bookingRequests || []).find(
+      (entry) => (entry.email || "").toLowerCase().trim() === email
+    );
     if (!request || request.status !== "pending") {
-      return Response.json({ success: false, message: "Pending booking request not found" }, { status: 404 });
+      return Response.json(
+        { success: false, message: "Pending booking request not found" },
+        { status: 404 }
+      );
     }
 
-    request.status = "accepted";
-    request.decidedAt = new Date();
-    if (!(ride.bookedUsers || []).some((entry) => (entry || "").toLowerCase().trim() === email)) {
-      ride.bookedUsers.push(email);
-      ride.seats = Math.max((ride.seats || 0) - 1, 0);
-    }
-    ride.passengerPickups = [
-      ...(ride.passengerPickups || []).filter((entry) => (entry.email || "").toLowerCase().trim() !== email),
-      {
-        email,
-        label: request.pickupLabel || "",
-        coords: request.pickupCoords || [],
-        updatedAt: new Date(),
-      },
-    ];
+    ride.bookingRequests = (ride.bookingRequests || []).filter(
+      (entry) => (entry.email || "").toLowerCase().trim() !== email
+    );
     await ride.save();
 
     const passenger = await User.findOne({ email }).select("name").lean();
     const passengerName = passenger?.name || email;
     await publishSystemMessage(
       String(ride._id),
-      `Driver accepted ${passengerName}'s booking. You can now share contact details, chat, and use live tracking.`
+      `Driver declined ${passengerName}'s booking request.`
     );
 
-    return Response.json({ success: true, message: "Booking request accepted" });
+    return Response.json({ success: true, message: "Booking request declined" });
   } catch (error) {
     return Response.json({ success: false, message: error.message }, { status: 500 });
   }

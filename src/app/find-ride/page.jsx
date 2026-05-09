@@ -250,13 +250,16 @@ const FindRide = () => {
           </div>
 
           <p className={styles.hint}>
-            Routes on the map appear after you run <strong>Search</strong> — then only matching rides are drawn so the map stays readable.
+            Tap the map to set your pickup, then tap again to set your destination. Routes appear after <strong>Search</strong>.
           </p>
           <p className={styles.hint}>
             Search by destination first. Pickup and time filters are optional to give you more ride options.
           </p>
           {Array.isArray(pickupCoords) && pickupCoords.length === 2 ? (
-            <p className={styles.hint}>Your pickup location will be shared with the driver after booking.</p>
+            <p className={styles.hint}>
+              <strong>Pickup set:</strong> {formData.pickup || `${pickupCoords[0].toFixed(5)}, ${pickupCoords[1].toFixed(5)}`}.
+              This will be shared with the driver only after they accept your booking.
+            </p>
           ) : null}
 
           {/* 🔍 SEARCH FORM */}

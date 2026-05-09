@@ -2,6 +2,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import AuthSync from "@/components/AuthSync";
+import SignOutWatcher from "@/components/SignOutWatcher";
 import { ToastProvider } from "@/components/ToastProvider";
 
 const geistSans = Geist({
@@ -27,6 +28,7 @@ export default function RootLayout({ children }) {
         >
           <ToastProvider>
             <AuthSync />
+            <SignOutWatcher />
             {children}
           </ToastProvider>
 
